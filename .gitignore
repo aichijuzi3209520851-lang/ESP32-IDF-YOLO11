@@ -1,25 +1,10 @@
-# ESP-IDF build artifacts
-build/
-build_codex_diag/
-.component_cache/
-managed_components/
-
-# Large files (not needed in repo)
+# Large files exceeding GitHub limit
 *.zip
-sdkconfig.old
-sdkconfig
 
-# Training outputs (can be regenerated)
-yolov11/runs/
-yolov11/yolo11n.pt
-
-# Python
+# Python cache
 __pycache__/
 *.pyc
 *.pyo
-
-# VS Code
-.vscode/
 
 # OS
 .DS_Store

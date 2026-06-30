@@ -1,0 +1,2 @@
+source D:/ESP32-IDF/esp32s3-cam/build/gdbinit/symbols
+source D:/ESP32-IDF/esp32s3-cam/build/gdbinit/connect
