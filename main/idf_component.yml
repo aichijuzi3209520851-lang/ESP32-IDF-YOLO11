@@ -1,0 +1,18 @@
+# idf_component.yml
+name: my_app
+
+# Which targets are valid for this component:
+targets:
+- esp32s3
+
+# External dependencies from the Espressif component registry:
+dependencies:
+  espressif/led_strip: ^2.4.1
+  espressif/esp32-camera: '*'
+  espressif/esp-dl: ^3.3.3
+requires:
+- esp_wifi
+- esp_event
+- esp_http_client
+- esp_http_server
+- nvs_flash

@@ -1,0 +1,6 @@
+# Custom partition table for large model (4.6MB .espdl embedded in app)
+CONFIG_PARTITION_TABLE_CUSTOM=y
+CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
+
+# Increase task watchdog timeout for long YOLO inference (~26 seconds)
+CONFIG_ESP_TASK_WDT_TIMEOUT_S=60

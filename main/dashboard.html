@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>光伏板脏污识别系统</title>
+    <!-- 外部资源 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        /* ========== 全局样式重置 & 基础变量 ========== */
+        :root {
+            --color-bg-primary: #0a0e17;
+            --color-bg-secondary: #111827;
+            --color-bg-tertiary: #0f172a;
+            --color-border: #1e293b;
+            --color-border-light: #334155;
+            --color-text-primary: #c8d6e5;
+            --color-text-secondary: #94a3b8;
+            --color-text-tertiary: #64748b;
+            --color-success: #22c55e;
+            --color-warning: #f59e0b;
+            --color-danger: #ef4444;
+            --color-info: #3b82f6;
+            --color-cyan: #06b6d4;
+            --spacing-xs: 4px;
+            --spacing-sm: 8px;
+            --spacing-md: 16px;
+            --spacing-lg: 20px;
+            --spacing-xl: 24px;
+            --border-radius-sm: 4px;
+            --border-radius-md: 6px;
+            --border-radius-lg: 10px;
+            --transition-default: all 0.2s ease;
+            --shadow-sm: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--color-bg-primary);
+            color: var(--color-text-primary);
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            line-height: 1.5;
+        }
+
+        /* ========== 侧边栏 ========== */
+        .sidebar {
+            width: 240px;
+            background: var(--color-bg-secondary);
+            padding: var(--spacing-md) 0;
+            display: flex;
+            flex-direction: column;
+            flex-shrink: 0;
+            transition: var(--transition-default);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .sidebar .logo {
+            text-align: center;
+            padding: 0 var(--spacing-md) var(--spacing-xl);
+            border-bottom: 1px solid var(--color-border);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .sidebar .logo h2 {
+            font-size: 16px;
+            color: var(--color-info);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: var(--spacing-xs);
+        }
+
+        .sidebar .logo p {
+            font-size: 11px;
+            color: var(--color-text-tertiary);
+            margin-top: var(--spacing-xs);
+        }
+
+        .sidebar nav a {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-sm) var(--spacing-md);
+            color: var(--color-text-secondary);
+            text-decoration: none;
+            font-size: 13px;
+            transition: var(--transition-default);
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar nav a:hover,
+        .sidebar nav a.active {
+            background: var(--color-bg-tertiary);
+            color: var(--color-text-primary);
+            border-left-color: var(--color-info);
+        }
+
+        .sidebar nav a .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .sidebar nav a .dot.green {
+            background: var(--color-success);
+        }
+
+        .sidebar nav a .dot.blue {
+            background: var(--color-info);
+        }
+
+        .sidebar nav a .dot.orange {
+            background: var(--color-warning);
+        }
+
+        /* ========== 主内容区 ========== */
+        .main {
+            flex: 1;
+            padding: var(--spacing-md) var(--spacing-lg);
+            overflow-y: auto;
+        }
+
+        .main h1 {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: var(--spacing-xl);
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-xs);
+        }
+
+        /* ========== KPI卡片 ========== */
+        .cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .card {
+            background: var(--color-bg-secondary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-md);
+            border: 1px solid var(--color-border);
+            transition: var(--transition-default);
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-sm);
+            border-color: var(--color-border-light);
+        }
+
+        .card .label {
+            font-size: 11px;
+            color: var(--color-text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .card .value {
+            font-size: 28px;
+            font-weight: 700;
+            margin: var(--spacing-sm) 0;
+            line-height: 1.2;
+        }
+
+        .card .unit {
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        .card .trend {
+            font-size: 11px;
+            margin-top: var(--spacing-xs);
+            display: flex;
+            align-items: center;
+            gap: 2px;
+        }
+
+        .card .trend.up {
+            color: var(--color-success);
+        }
+
+        .card .trend.down {
+            color: var(--color-danger);
+        }
+
+        /* ========== 图表区域 ========== */
+        .charts {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .chart-box {
+            background: var(--color-bg-secondary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-md);
+            border: 1px solid var(--color-border);
+        }
+
+        .chart-box h3 {
+            font-size: 13px;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--spacing-sm);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        canvas {
+            width: 100% !important;
+            height: 200px !important;
+        }
+
+        /* ========== 视频流 & 检测列表 ========== */
+        .stream-row {
+            display: grid;
+            grid-template-columns: 1.4fr 1fr;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .stream-box {
+            background: var(--color-bg-secondary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-md);
+            border: 1px solid var(--color-border);
+            position: relative;
+        }
+
+        .stream-box h3 {
+            font-size: 13px;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .stream-wrap {
+            position: relative;
+            background: #000;
+            border-radius: var(--border-radius-md);
+            overflow: hidden;
+            aspect-ratio: 4/3;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .stream-wrap img {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+        }
+
+        .stream-overlay {
+            display: flex;
+            justify-content: space-between;
+            padding: var(--spacing-xs) var(--spacing-sm);
+            font-size: 11px;
+            color: var(--color-text-tertiary);
+            margin-top: var(--spacing-xs);
+        }
+
+        .stream-overlay span:first-child {
+            color: var(--color-success);
+            animation: pulse 2s infinite;
+        }
+
+        .stream-side {
+            display: flex;
+            flex-direction: column;
+            gap: var(--spacing-md);
+        }
+
+        /* ========== 仪表盘 & 检测列表 ========== */
+        .gauge-row {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .gauge-box, .detection-list {
+            background: var(--color-bg-secondary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-md);
+            border: 1px solid var(--color-border);
+        }
+
+        .gauge-box h3, .detection-list h3 {
+            font-size: 13px;
+            color: var(--color-text-secondary);
+            margin-bottom: var(--spacing-sm);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .gauge-box {
+            text-align: center;
+        }
+
+        .gauge-circle {
+            width: 120px;
+            height: 120px;
+            margin: 0 auto;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+            font-weight: 700;
+            position: relative;
+            transition: var(--transition-default);
+        }
+
+        .gauge-circle::after {
+            content: '';
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: var(--color-bg-secondary);
+        }
+
+        .gauge-circle span {
+            position: relative;
+            z-index: 1;
+        }
+
+        .gauge-circle.clean {
+            background: conic-gradient(var(--color-success) 0deg 72deg, var(--color-border) 72deg 360deg);
+        }
+
+        .gauge-circle.dirty {
+            background: conic-gradient(var(--color-warning) 0deg 288deg, var(--color-border) 288deg 360deg);
+        }
+
+        .gauge-box p {
+            margin-top: var(--spacing-sm);
+            font-size: 12px;
+            color: var(--color-text-secondary);
+        }
+
+        .det-item {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: var(--border-radius-md);
+            margin-bottom: var(--spacing-xs);
+            font-size: 13px;
+            background: var(--color-bg-tertiary);
+            transition: var(--transition-default);
+        }
+
+        .det-item:hover {
+            background: rgba(30, 41, 59, 0.8);
+        }
+
+        .det-item .badge {
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .badge.bird {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .badge.crack {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .badge.dust {
+            background: #f3e8ff;
+            color: #6b21a8;
+        }
+
+        .badge.shadow {
+            background: #e0e7ff;
+            color: #3730a3;
+        }
+
+        .badge.hotspot {
+            background: #fce7f3;
+            color: #9d174d;
+        }
+
+        .badge.panel {
+            background: #ccfbf1;
+            color: #115e59;
+        }
+
+        .det-item span:last-child {
+            margin-left: auto;
+            color: var(--color-text-tertiary);
+        }
+
+        /* ========== 控制区域 ========== */
+        .controls {
+            background: var(--color-bg-secondary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-lg);
+            border: 1px solid var(--color-border);
+            margin-bottom: var(--spacing-xl);
+        }
+
+        .controls h3 {
+            font-size: 14px;
+            margin-bottom: var(--spacing-md);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn-row {
+            display: flex;
+            gap: var(--spacing-md);
+            flex-wrap: wrap;
+            margin-bottom: var(--spacing-md);
+        }
+
+        .btn {
+            padding: var(--spacing-sm) var(--spacing-xl);
+            border-radius: var(--border-radius-md);
+            border: none;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: var(--transition-default);
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-start {
+            background: var(--color-success);
+        }
+
+        .btn-start:hover:not(:disabled) {
+            background: #16a34a;
+            transform: translateY(-1px);
+        }
+
+        .btn-stop {
+            background: var(--color-danger);
+        }
+
+        .btn-stop:hover:not(:disabled) {
+            background: #dc2626;
+            transform: translateY(-1px);
+        }
+
+        .btn-setting {
+            background: var(--color-info);
+        }
+
+        .btn-setting:hover:not(:disabled) {
+            background: #2563eb;
+            transform: translateY(-1px);
+        }
+
+        /* ========== 设置面板 ========== */
+        .settings {
+            display: none;
+            background: var(--color-bg-tertiary);
+            border-radius: var(--border-radius-md);
+            padding: var(--spacing-md);
+            margin-top: var(--spacing-sm);
+            border: 1px solid var(--color-border);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .settings.show {
+            display: block;
+        }
+
+        .set-row {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-sm);
+            font-size: 13px;
+            flex-wrap: wrap;
+        }
+
+        .set-row label {
+            width: 100px;
+            color: var(--color-text-secondary);
+            flex-shrink: 0;
+        }
+
+        .set-row input,
+        .set-row select {
+            flex: 1;
+            background: var(--color-bg-secondary);
+            border: 1px solid var(--color-border-light);
+            border-radius: var(--border-radius-sm);
+            padding: 6px 10px;
+            color: var(--color-text-primary);
+            font-size: 13px;
+            transition: var(--transition-default);
+        }
+
+        .set-row input:focus,
+        .set-row select:focus {
+            outline: none;
+            border-color: var(--color-info);
+        }
+
+        .set-row input[type=range] {
+            flex: 2;
+            min-width: 100px;
+        }
+
+        /* ========== 状态栏 ========== */
+        .status-bar {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            background: var(--color-bg-secondary);
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-sm) var(--spacing-lg);
+            border: 1px solid var(--color-border);
+            font-size: 12px;
+            flex-wrap: wrap;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--color-success);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .status-bar span {
+            color: var(--color-text-secondary);
+        }
+
+        /* ========== 响应式适配 ========== */
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 60px;
+                padding: var(--spacing-md) 0;
+            }
+
+            .sidebar .logo h2 span,
+            .sidebar .logo p,
+            .sidebar nav a span:not(.dot) {
+                display: none;
+            }
+
+            .sidebar nav a {
+                justify-content: center;
+                padding: var(--spacing-sm);
+            }
+
+            .main {
+                padding: var(--spacing-sm);
+            }
+
+            .status-bar {
+                gap: var(--spacing-xs);
+                row-gap: var(--spacing-sm);
+            }
+
+            .status-bar span {
+                white-space: nowrap;
+            }
+
+            .stream-row {
+                grid-template-columns: 1fr;
+            }
+
+            .status-bar span:not(:first-child):not(:nth-child(2)) {
+                order: 1;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .cards {
+                grid-template-columns: 1fr;
+            }
+
+            .btn-row {
+                flex-direction: column;
+                gap: var(--spacing-sm);
+            }
+
+            .btn {
+                width: 100%;
+                justify-content: center;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+        <div class="logo">
+            <h2>☀️ <span>光伏板监测系统</span></h2>
+            <p>ESP32-S3 Edge AI</p>
+        </div>
+        <nav>
+            <a href="#" class="active"><span class="dot green"></span>运行概览</a>
+            <a href="#"><span class="dot blue"></span>历史数据</a>
+            <a href="#"><span class="dot orange"></span>系统设置</a>
+        </nav>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="main">
+        <h1>📊 运行概览</h1>
+
+        <!-- KPI卡片 -->
+        <div class="cards">
+            <div class="card">
+                <div class="label">发电功率</div>
+                <div class="value" id="power">2.38</div>
+                <div class="unit">kW</div>
+                <div class="trend up">↑ 3.2%</div>
+            </div>
+            <div class="card">
+                <div class="label">光照强度</div>
+                <div class="value" id="lux">52.3</div>
+                <div class="unit">klux</div>
+                <div class="trend down">↓ 1.5%</div>
+            </div>
+            <div class="card">
+                <div class="label">温度 / 湿度</div>
+                <div class="value" id="temp">32.5°C</div>
+                <div class="unit" id="humidity">68% RH</div>
+            </div>
+            <div class="card">
+                <div class="label">脏污程度</div>
+                <div class="value" id="dirtScore" style="color:var(--color-warning)">42%</div>
+                <div class="unit">中度污染</div>
+            </div>
+        </div>
+
+        <!-- 图表区域 -->
+        <div class="charts">
+            <div class="chart-box">
+                <h3>📈 发电功率 & 光照强度</h3>
+                <canvas id="chartPower"></canvas>
+            </div>
+            <div class="chart-box">
+                <h3>🌡️ 温度 & 湿度趋势</h3>
+                <canvas id="chartEnv"></canvas>
+            </div>
+        </div>
+
+        <!-- 视频流 & 检测结果 -->
+        <div class="stream-row">
+            <div class="stream-box">
+                <h3>📷 实时画面</h3>
+                <div class="stream-wrap">
+                    <img src="/stream" alt="Live Stream" />
+                </div>
+                <div class="stream-overlay">
+                    <span id="streamStatus">● LIVE</span>
+                    <span id="streamFPS">MJPEG</span>
+                </div>
+            </div>
+            <div class="stream-side">
+                <div class="stream-box">
+                    <h3>🤖 AI 推理结果</h3>
+                    <div class="stream-wrap">
+                        <img id="annotImg" src="" alt="Detection Result" />
+                    </div>
+                    <div class="stream-overlay">
+                        <span id="annotStatus">⏳ 等待推理...</span>
+                        <span id="annotTime">--</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 远程控制 -->
+        <div class="controls">
+            <h3>🎮 远程控制</h3>
+            <div class="btn-row">
+                <button class="btn btn-start" onclick="sendCmd('clean_start')">🧹 开始清洁</button>
+                <button class="btn btn-stop" onclick="sendCmd('stop')">⏹️ 停止机器</button>
+                <button class="btn btn-setting" onclick="toggleSettings()">⚙️ 参数设置</button>
+            </div>
+            <div class="settings" id="settingsPanel">
+                <div class="set-row">
+                    <label>清洁模式</label>
+                    <select id="cleanMode">
+                        <option>自动清洁</option>
+                        <option>手动清洁</option>
+                        <option>定时清洁</option>
+                    </select>
+                </div>
+                <div class="set-row">
+                    <label>脏污阈值</label>
+                    <input type="range" min="10" max="90" value="40" id="dirtThr">
+                    <span id="dirtThrVal">40%</span>
+                </div>
+                <div class="set-row">
+                    <label>清洁时长</label>
+                    <input type="number" value="30" id="cleanDuration" min="5" max="300" style="width:80px"> 秒
+                </div>
+                <div class="set-row">
+                    <label>喷淋水压</label>
+                    <select id="waterPressure">
+                        <option>低压</option>
+                        <option selected>中压</option>
+                        <option>高压</option>
+                    </select>
+                </div>
+                <button class="btn btn-start" onclick="saveSettings()">💾 保存设置</button>
+            </div>
+        </div>
+
+        <!-- 状态栏 -->
+        <div class="status-bar">
+            <div class="status-dot"></div>
+            <span>系统运行中</span>
+            <span>|</span>
+            <span>设备: ESP32-S3</span>
+            <span>|</span>
+            <span>IP: <span id="devIP">--</span></span>
+            <span>|</span>
+            <span>最后更新: <span id="lastUpdate">--</span></span>
+            <span>|</span>
+            <span>推理耗时: 4.6s</span>
+            <span>|</span>
+            <span>MQTT: 已连接</span>
+        </div>
+    </main>
+
+    <script>
+        // ========== 常量定义 ==========
+        const CONFIG = {
+            refreshInterval: 3000, // 数据刷新间隔(ms)
+            chartColor: {
+                power: '#3b82f6',
+                lux: '#f59e0b',
+                temp: '#ef4444',
+                humidity: '#06b6d4',
+                success: '#22c55e',
+                warning: '#f59e0b',
+                danger: '#ef4444'
+            },
+            dataRange: {
+                power: [1.8, 2.8],
+                lux: [30, 70],
+                temp: [25, 40],
+                humidity: [40, 85],
+                dirt: [15, 60]
+            }
+        };
+
+        // ========== 工具函数 ==========
+        /**
+         * 生成指定范围的随机数
+         * @param {number} min 最小值
+         * @param {number} max 最大值
+         * @param {number} decimal 小数位数
+         * @returns {number} 随机数
+         */
+        function randomNum(min, max, decimal = 1) {
+            const num = min + Math.random() * (max - min);
+            return Number(num.toFixed(decimal));
+        }
+
+        /**
+         * 获取当前时间戳(格式化)
+         * @returns {string} 格式化时间
+         */
+        function getCurrentTime() {
+            return new Date().toLocaleTimeString('zh-CN', { hour12: false });
+        }
+
+        // ========== DOM 元素缓存 ==========
+        const dom = {
+            power: document.getElementById('power'),
+            lux: document.getElementById('lux'),
+            temp: document.getElementById('temp'),
+            humidity: document.getElementById('humidity'),
+            dirtScore: document.getElementById('dirtScore'),
+            dirtGauge: document.getElementById('dirtGauge'),
+            dirtDesc: document.getElementById('dirtDesc'),
+            devIP: document.getElementById('devIP'),
+            lastUpdate: document.getElementById('lastUpdate'),
+            dirtThr: document.getElementById('dirtThr'),
+            dirtThrVal: document.getElementById('dirtThrVal'),
+            settingsPanel: document.getElementById('settingsPanel'),
+            annotImg: document.getElementById('annotImg'),
+            annotTime: document.getElementById('annotTime'),
+            chartPower: document.getElementById('chartPower'),
+            chartEnv: document.getElementById('chartEnv')
+        };
+
+        // ========== 图表初始化 ==========
+        // 生成时间标签(20个)
+        let timeLabels = Array.from({ length: 20 }, (_, i) => {
+            return new Date(Date.now() - (19 - i) * CONFIG.refreshInterval)
+                .toLocaleTimeString('zh-CN', { hour12: false });
+        });
+
+        // 发电功率&光照强度图表
+        const chartPower = new Chart(dom.chartPower, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [
+                    {
+                        label: '功率(kW)',
+                        borderColor: CONFIG.chartColor.power,
+                        data: Array(20).fill(0).map(() => randomNum(...CONFIG.dataRange.power, 2)),
+                        tension: 0.3,
+                        fill: false,
+                        pointRadius: 0
+                    },
+                    {
+                        label: '光照(klux)',
+                        borderColor: CONFIG.chartColor.lux,
+                        data: Array(20).fill(0).map(() => randomNum(...CONFIG.dataRange.lux, 1)),
+                        tension: 0.3,
+                        fill: false,
+                        pointRadius: 0,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        borderColor: '#1e293b',
+                        borderWidth: 1,
+                        padding: 8,
+                        titleFont: { size: 12 },
+                        bodyFont: { size: 11 }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 8 } },
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        title: { display: true, text: 'kW', color: CONFIG.chartColor.power },
+                        ticks: { color: '#64748b' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        title: { display: true, text: 'klux', color: CONFIG.chartColor.lux },
+                        ticks: { color: '#64748b' },
+                        grid: { drawOnChartArea: false }
+                    }
+                },
+                animation: false // 关闭动画提升性能
+            }
+        });
+
+        // 温度&湿度图表
+        const chartEnv = new Chart(dom.chartEnv, {
+            type: 'line',
+            data: {
+                labels: timeLabels,
+                datasets: [
+                    {
+                        label: '温度(°C)',
+                        borderColor: CONFIG.chartColor.temp,
+                        data: Array(20).fill(0).map(() => randomNum(...CONFIG.dataRange.temp, 1)),
+                        tension: 0.3,
+                        fill: false,
+                        pointRadius: 0
+                    },
+                    {
+                        label: '湿度(%)',
+                        borderColor: CONFIG.chartColor.humidity,
+                        data: Array(20).fill(0).map(() => randomNum(...CONFIG.dataRange.humidity, 0)),
+                        tension: 0.3,
+                        fill: false,
+                        pointRadius: 0,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
+                    tooltip: {
+                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                        borderColor: '#1e293b',
+                        borderWidth: 1,
+                        padding: 8,
+                        titleFont: { size: 12 },
+                        bodyFont: { size: 11 }
+                    }
+                },
+                scales: {
+                    x: { ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 8 } },
+                    y: {
+                        type: 'linear',
+                        position: 'left',
+                        title: { display: true, text: '°C', color: CONFIG.chartColor.temp },
+                        ticks: { color: '#64748b' }
+                    },
+                    y1: {
+                        type: 'linear',
+                        position: 'right',
+                        title: { display: true, text: '%', color: CONFIG.chartColor.humidity },
+                        ticks: { color: '#64748b' },
+                        grid: { drawOnChartArea: false },
+                        min: 0,
+                        max: 100
+                    }
+                },
+                animation: false // 关闭动画提升性能
+            }
+        });
+
+        // ========== 初始化逻辑 ==========
+        function init() {
+            // 设置设备IP
+            const host = window.location.hostname || '127.0.0.1';
+            dom.devIP.textContent = host;
+
+            // 推理结果图自动刷新
+            const annotUrl = `http://${host}:8080/annotated`;
+            dom.annotImg.src = annotUrl;
+            setInterval(() => {
+                dom.annotImg.src = `${annotUrl}?t=${Date.now()}`;
+                dom.annotTime.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            }, 2000);
+
+            // 绑定脏污阈值滑块事件
+            dom.dirtThr.addEventListener('input', () => {
+                dom.dirtThrVal.textContent = `${dom.dirtThr.value}%`;
+            });
+            // 启动数据刷新
+            startDataRefresh();
+        }
+
+        // ========== 数据刷新逻辑 ==========
+        function startDataRefresh() {
+            setInterval(() => {
+                // 生成模拟数据
+                const power = randomNum(...CONFIG.dataRange.power, 2);
+                const lux = randomNum(...CONFIG.dataRange.lux, 1);
+                const temp = randomNum(...CONFIG.dataRange.temp, 1);
+                const humidity = randomNum(...CONFIG.dataRange.humidity, 0);
+                const dirt = Math.floor(randomNum(...CONFIG.dataRange.dirt, 0));
+
+                // 更新DOM数据(批量更新减少重绘)
+                dom.power.textContent = power;
+                dom.lux.textContent = lux;
+                dom.temp.textContent = `${temp}°C`;
+                dom.humidity.textContent = `${humidity}% RH`;
+                dom.dirtScore.textContent = `${dirt}%`;
+                dom.dirtGauge.innerHTML = `<span style="color:${dirt > 50 ? CONFIG.chartColor.danger : CONFIG.chartColor.warning}">${dirt}%</span>`;
+                dom.lastUpdate.textContent = getCurrentTime();
+
+                // 更新脏污描述
+                const dirtType = dirt > 50 ? ['鸟粪 ×3', '灰尘 ×2'] : ['鸟粪 ×2', '灰尘 ×1'];
+                dom.dirtDesc.textContent = `检测到 ${dirtType.join(', ')}`;
+
+                // 更新图表数据(优化：只更新最后一个数据点)
+                const currentTime = getCurrentTime();
+                timeLabels.push(currentTime);
+                timeLabels.shift();
+
+                // 功率&光照图表更新
+                chartPower.data.labels = timeLabels;
+                chartPower.data.datasets[0].data.push(power);
+                chartPower.data.datasets[0].data.shift();
+                chartPower.data.datasets[1].data.push(lux);
+                chartPower.data.datasets[1].data.shift();
+                chartPower.update('none'); // 无动画更新
+
+                // 温湿度图表更新
+                chartEnv.data.labels = timeLabels;
+                chartEnv.data.datasets[0].data.push(temp);
+                chartEnv.data.datasets[0].data.shift();
+                chartEnv.data.datasets[1].data.push(humidity);
+                chartEnv.data.datasets[1].data.shift();
+                chartEnv.update('none'); // 无动画更新
+
+            }, CONFIG.refreshInterval);
+        }
+
+        // ========== 交互函数 ==========
+        /**
+         * 发送控制命令
+         * @param {string} cmd 命令类型
+         */
+        function sendCmd(cmd) {
+            // 模拟命令发送(可替换为真实MQTT/API调用)
+            const cmdMap = {
+                'clean_start': '开始清洁',
+                'stop': '停止机器'
+            };
+            showToast(`📡 命令已发送: ${cmdMap[cmd] || cmd}`);
+        }
+
+        /**
+         * 切换设置面板显示/隐藏
+         */
+        function toggleSettings() {
+            dom.settingsPanel.classList.toggle('show');
+        }
+
+        /**
+         * 保存设置
+         */
+        function saveSettings() {
+            const settings = {
+                cleanMode: document.getElementById('cleanMode').value,
+                dirtThr: dom.dirtThr.value,
+                cleanDuration: document.getElementById('cleanDuration').value,
+                waterPressure: document.getElementById('waterPressure').value
+            };
+            // 验证输入
+            if (settings.cleanDuration < 5 || settings.cleanDuration > 300) {
+                showToast('⚠️ 清洁时长需在5-300秒之间', 'warning');
+                return;
+            }
+            // 模拟保存(可替换为真实API调用)
+            showToast(`⚙️ 设置已保存:\n模式: ${settings.cleanMode}\n阈值: ${settings.dirtThr}%\n时长: ${settings.cleanDuration}s\n水压: ${settings.waterPressure}`);
+            dom.settingsPanel.classList.remove('show');
+        }
+
+        /**
+         * 轻提示函数(增强交互反馈)
+         * @param {string} msg 提示信息
+         * @param {string} type 类型(success/warning/error)
+         */
+        function showToast(msg, type = 'success') {
+            // 创建toast元素
+            const toast = document.createElement('div');
+            const bgColor = {
+                success: '#22c55e',
+                warning: '#f59e0b',
+                error: '#ef4444'
+            };
+            toast.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: ${bgColor[type]};
+                color: white;
+                padding: 10px 20px;
+                border-radius: 6px;
+                font-size: 13px;
+                z-index: 9999;
+                animation: fadeIn 0.3s ease, fadeOut 0.3s ease 2.7s;
+                max-width: 300px;
+                word-wrap: break-word;
+            `;
+            toast.textContent = msg;
+            document.body.appendChild(toast);
+            // 3秒后移除
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        // ========== 启动应用 ==========
+        window.addEventListener('DOMContentLoaded', init);
+
+        // 暴露全局函数(供HTML调用)
+        window.sendCmd = sendCmd;
+        window.toggleSettings = toggleSettings;
+        window.saveSettings = saveSettings;
+    </script>
+</body>
+</html>
