@@ -3,9 +3,9 @@
 #include <stdint.h>
 #include <vector>
 #include "esp_err.h"
+#include "yolo_classes.h"
 
 #define YOLO_IMGSZ 320
-#define YOLO_NUM_CLASSES 6
 #define YOLO_CONF_THRESHOLD 0.10f
 #define YOLO_IOU_THRESHOLD 0.50f
 #define YOLO_MAX_DETECTIONS 100

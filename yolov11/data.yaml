@@ -1,6 +1,13 @@
 path: .
-train: train/images
-val: val/images
+train: splits/train.txt
+val: splits/val.txt
+test: splits/test.txt
 
 nc: 6
-names: ['bird', 'crack', 'dust', 'shadow', 'hotspot', 'panel']
+names:
+  0: bird_drop
+  1: clean
+  2: dust
+  3: electrical_damage
+  4: physical_damage
+  5: snow_covered

@@ -13,7 +13,8 @@
 static const char *TAG = "YOLO_DET";
 
 static const char *CLASS_NAMES[YOLO_NUM_CLASSES] = {
-    "Bird", "Cleaan", "Dust", "Electrical", "Physical", "Solar"
+    "bird_drop", "clean", "dust", "electrical_damage",
+    "physical_damage", "snow_covered"
 };
 
 extern const uint8_t model_espdl_start[] asm("_binary_yolo11n_esp32s3_espdl_start");

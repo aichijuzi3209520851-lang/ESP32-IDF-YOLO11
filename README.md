@@ -237,13 +237,20 @@ idf.py -p COM<X> flash monitor
 ```bash
 cd yolov11
 
-# 数据集结构
-# train/images/  - 训练图片
-# train/labels/  - YOLO 格式标注
-# val/images/    - 验证图片
-# val/labels/    - 验证标注
-# test/images/   - 测试图片
+# 按 Roboflow 原图 ID 分组，生成 70/15/15 无泄漏清单
+python split_dataset.py
+
+# 为每类生成 50 个标注框的人工审计联系表
+python audit_labels.py
 ```
+
+`split_dataset.py` 不移动原始图片和标签。训练、验证、测试清单写入
+`splits/`，同一原图的 Roboflow 变体只会出现在一个集合中。人工审计
+输出写入 `audit/`，该目录不会提交到 Git。
+
+OV5640 实拍数据应单独保存在 `device_test/images/` 和
+`device_test/labels/`，不要混入网络图片测试集。正式指标同时报告独立
+测试集结果和真实设备场景结果。
 
 ### 训练 + 导出 + 量化
 
@@ -253,10 +260,17 @@ python train_and_export.py
 ```
 
 脚本自动完成：
-1. 训练 YOLO11n (100 epochs)
+1. 使用 CUDA 训练 YOLO11n (100 epochs)
 2. 导出自定义 ONNX (ESP-DL 兼容)
 3. INT8 量化 (ESP-PPQ)
 4. 复制到 `main/model/`
+
+云端训练前先确认 CUDA 可用：
+
+```bash
+nvidia-smi
+python -c "import torch; print(torch.cuda.is_available(), torch.cuda.get_device_name(0))"
+```
 
 ---
 

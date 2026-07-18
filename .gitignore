@@ -5,6 +5,7 @@
 __pycache__/
 *.pyc
 *.pyo
+yolov11/audit/
 
 # OS
 .DS_Store

@@ -75,8 +75,41 @@ static void inference_task_run(void *arg) {
         );
 
         if (!results.empty()) {
-            int worst_class = results[0].class_id;
-            led_set_from_detection(worst_class);
+            int highest_priority_class = YOLO_CLASS_CLEAN;
+            int highest_priority = yolo_class_alert_priority(highest_priority_class);
+            float weighted_dirty_area = 0.0f;
+            bool has_fault = false;
+            bool wet_cleaning_blocked = false;
+
+            for (const auto &result : results) {
+                int priority = yolo_class_alert_priority(result.class_id);
+                if (priority > highest_priority) {
+                    highest_priority = priority;
+                    highest_priority_class = result.class_id;
+                }
+
+                int box_width = result.x2 - result.x1;
+                int box_height = result.y2 - result.y1;
+                if (box_width > 0 && box_height > 0) {
+                    weighted_dirty_area += (float)(box_width * box_height) *
+                                           yolo_class_dirt_weight(result.class_id);
+                }
+                has_fault = has_fault || yolo_class_is_fault(result.class_id);
+                wet_cleaning_blocked = wet_cleaning_blocked ||
+                                       yolo_class_blocks_wet_cleaning(result.class_id);
+            }
+
+            float image_area = (float)(frame.width * frame.height);
+            float dirt_index = image_area > 0.0f
+                                   ? weighted_dirty_area / image_area * 100.0f
+                                   : 0.0f;
+            if (dirt_index > 100.0f) dirt_index = 100.0f;
+
+            led_set_from_detection(highest_priority_class);
+            ESP_LOGI(TAG, "Vision state: dirt=%.1f%% fault=%s wet_clean=%s",
+                     dirt_index,
+                     has_fault ? "YES" : "NO",
+                     wet_cleaning_blocked ? "BLOCKED" : "ALLOWED");
         } else {
             led_set_no_detection();
         }
