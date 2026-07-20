@@ -158,7 +158,7 @@ def write_manifests(assigned: dict[str, list[Sample]]) -> None:
     SPLITS_DIR.mkdir(exist_ok=True)
     for split_name, samples in assigned.items():
         lines = [
-            Path(os.path.relpath(sample.image, SPLITS_DIR)).as_posix()
+            Path(os.path.relpath(sample.image, BASE)).as_posix()
             for sample in sorted(samples, key=lambda sample: str(sample.image))
         ]
         (SPLITS_DIR / f"{split_name}.txt").write_text(

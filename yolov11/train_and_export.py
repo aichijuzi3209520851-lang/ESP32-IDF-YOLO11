@@ -1,210 +1,387 @@
 """
-YOLO11n 太阳能板缺陷检测 — 训练 → ESP-DL导出 → INT8量化 一键脚本
+YOLO11n solar-panel model pipeline.
 
-用法:  python train_and_export.py
+Cloud training:
+  python train_and_export.py train
+  python train_and_export.py validate --weights runs/detect/train_cloud/weights/best.pt --split val
+  python train_and_export.py validate --weights runs/detect/train_cloud/weights/best.pt --split test
 
-输出:  solar_panel_yolo11n.espdl  (拷贝到 ../main/model/ 即可部署)
-
-历史经验:
-  - Windows 必须用 if __name__ == "__main__" 包裹 (multiprocessing spawn)
-  - ESP-DL 需要分离 box/score 输出 (ESP_Detect), DFL 解码移至后处理
-  - 输入校准用 [0,1] 归一化; C++ 推理时需同步做 /255.0
-  - INT8 score_scale=8 时最小可表达 sigmoid=0.5, 阈值用 -1 检测 int8≥0
-  - export_test_values=True 才能启用板端 model->test()
+Local conversion:
+  python train_and_export.py export-onnx --weights best.pt
+  python train_and_export.py quantize
+  python train_and_export.py deploy
 """
 
-import os, shutil
+import argparse
+import os
+import shutil
 from pathlib import Path
-import numpy as np
-import torch
-import yaml
-from torch.utils.data import DataLoader, Dataset
-from PIL import Image
 
-# ============================================================
-# 配置
-# ============================================================
-IMG_SIZE = 320            # 模型输入分辨率 (与摄像头一致)
-MODEL_NAME = "yolo11n"    # 骨架: yolo11n / yolo11s / yolo11m
-DATA_CONFIG_PATH = Path(__file__).with_name("data.yaml")
-with DATA_CONFIG_PATH.open("r", encoding="utf-8") as f:
-    _data_config = yaml.safe_load(f)
-CLASS_NAMES = [_data_config["names"][i] for i in sorted(_data_config["names"])]
+import yaml
+
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DATA_CONFIG_PATH = SCRIPT_DIR / "data.yaml"
+DEFAULT_ONNX = SCRIPT_DIR / "solar_panel_yolo11n.onnx"
+DEFAULT_ESPDL = SCRIPT_DIR / "solar_panel_yolo11n.espdl"
+DEFAULT_DEPLOY_PATH = SCRIPT_DIR.parent / "main" / "model" / "yolo11n_esp32s3.espdl"
+IMG_SIZE = 320
+
+with DATA_CONFIG_PATH.open("r", encoding="utf-8") as file:
+    DATA_CONFIG = yaml.safe_load(file)
+
+CLASS_NAMES = [DATA_CONFIG["names"][index] for index in sorted(DATA_CONFIG["names"])]
 NC = len(CLASS_NAMES)
 
-ONNX_NAME  = "solar_panel_yolo11n.onnx"
-ESPDL_NAME = "solar_panel_yolo11n.espdl"
-BEST_PT    = "runs/detect/train/weights/best.pt"
-
-# 训练超参数 (V6: 降误判优先)
+# Competition training preset: prioritize fewer false positives while preserving
+# the 320x320 input required by the ESP32-S3 deployment.
 TRAIN_CFG = dict(
-    data="data.yaml", epochs=100, imgsz=IMG_SIZE,
-    batch=32, device=0, workers=4, patience=20,
-    save=True, save_period=10, project="runs/detect", name="train_v2", exist_ok=False,
-    pretrained=True, optimizer="AdamW", cos_lr=True, amp=True, cache=True,
-    # 学习率
-    lr0=0.001, lrf=0.01, warmup_epochs=3,
-    # 数据增强
+    data=str(DATA_CONFIG_PATH),
+    epochs=100,
+    imgsz=IMG_SIZE,
+    batch=32,
+    device=0,
+    workers=4,
+    patience=20,
+    save=True,
+    save_period=10,
+    project=str(SCRIPT_DIR / "runs" / "detect"),
+    name="train_cloud",
+    exist_ok=False,
+    pretrained=True,
+    optimizer="AdamW",
+    cos_lr=True,
+    amp=True,
+    cache="disk",
+    lr0=0.001,
+    lrf=0.01,
+    warmup_epochs=3,
     augment=True,
-    hsv_h=0.01, hsv_s=0.40, hsv_v=0.20,
-    degrees=0.3, translate=0.02, scale=0.06, shear=0.10,
-    fliplr=0.5, flipud=0.0, perspective=0.0,
-    mosaic=0.15, mixup=0.03, copy_paste=0.35, erasing=0.10,
-    close_mosaic=10, multi_scale=False, rect=False,
-    # 损失权重
-    box=7.5, cls=1.25, dfl=1.2, dropout=0.18,
+    hsv_h=0.01,
+    hsv_s=0.40,
+    hsv_v=0.20,
+    degrees=0.3,
+    translate=0.02,
+    scale=0.06,
+    shear=0.10,
+    fliplr=0.5,
+    flipud=0.0,
+    perspective=0.0,
+    mosaic=0.15,
+    mixup=0.03,
+    copy_paste=0.35,
+    erasing=0.10,
+    close_mosaic=10,
+    multi_scale=False,
+    rect=False,
+    box=7.5,
+    cls=1.25,
+    dfl=1.2,
+    dropout=0.18,
 )
 
 
-# ============================================================
-# 校准数据集 (用于 ESP-PPQ 量化)
-# ============================================================
-class CalibDataset(Dataset):
-    def __init__(self, img_dir, img_size=IMG_SIZE):
-        self.img_dir = img_dir
-        self.img_size = img_size
-        self.files = sorted([
-            f for f in os.listdir(img_dir)
-            if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp"))
-        ])
-
-    def __len__(self):
-        return len(self.files)
-
-    def __getitem__(self, idx):
-        img = Image.open(os.path.join(self.img_dir, self.files[idx])).convert("RGB")
-        img = img.resize((self.img_size, self.img_size), Image.BILINEAR)
-        arr = np.asarray(img, dtype=np.float32) / 255.0       # [0,1] 归一化
-        return torch.from_numpy(arr).permute(2, 0, 1).contiguous()  # CHW
+def resolve_path(path: str) -> Path:
+    candidate = Path(path).expanduser()
+    if not candidate.is_absolute():
+        candidate = SCRIPT_DIR / candidate
+    return candidate.resolve()
 
 
-# ============================================================
-# 主流程
-# ============================================================
-def main():
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+def require_file(path: Path, label: str) -> Path:
+    if not path.is_file():
+        raise FileNotFoundError(f"{label} not found: {path}")
+    return path
 
-    # ===== STEP 1: 训练 =====
-    print("=" * 60)
-    print(f"STEP 1: 训练 {MODEL_NAME} ({IMG_SIZE}x{IMG_SIZE}, CUDA)")
-    print("=" * 60)
 
+def train(args: argparse.Namespace) -> None:
+    import torch
     from ultralytics import YOLO
 
-    model = YOLO(f"{MODEL_NAME}.pt")   # 自动下载预训练权重
-    results = model.train(**TRAIN_CFG)
-    model.val()
+    if str(args.device).lower() != "cpu" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA is unavailable. Check the AutoDL image before paid training.")
 
-    best = str(results.save_dir / "weights/best.pt")
-    print(f"Best model: {best}")
+    print(f"PyTorch: {torch.__version__}")
+    print(f"CUDA runtime: {torch.version.cuda}")
+    if torch.cuda.is_available():
+        print(f"GPU: {torch.cuda.get_device_name(0)}")
 
-    # ===== STEP 2: 导出 ESP-DL 兼容 ONNX =====
-    print("\n" + "=" * 60)
-    print("STEP 2: 导出 ESP-DL 兼容 ONNX")
-    print("=" * 60)
+    model_path = resolve_path(args.model)
+    model = YOLO(str(model_path) if model_path.is_file() else args.model)
+    if args.resume:
+        if not model_path.is_file():
+            raise FileNotFoundError("--resume requires --model to point to last.pt")
+        results = model.train(resume=True)
+    else:
+        config = dict(TRAIN_CFG)
+        config.update(
+            epochs=args.epochs,
+            batch=args.batch,
+            device=args.device,
+            workers=args.workers,
+            patience=args.patience,
+            name=args.name,
+        )
+        results = model.train(**config)
+    best = results.save_dir / "weights" / "best.pt"
+    last = results.save_dir / "weights" / "last.pt"
 
+    print(f"\nTraining output: {results.save_dir}")
+    print(f"Best weights: {best}")
+    print(f"Last weights: {last}")
+    print("Download the complete training output directory before shutting down AutoDL.")
+
+
+def validate(args: argparse.Namespace) -> None:
+    import torch
+    from ultralytics import YOLO
+
+    weights = require_file(resolve_path(args.weights), "Weights")
+    if str(args.device).lower() != "cpu" and not torch.cuda.is_available():
+        raise RuntimeError("CUDA is unavailable. Use --device cpu or fix the GPU environment.")
+
+    model = YOLO(str(weights))
+    results = model.val(
+        data=str(DATA_CONFIG_PATH),
+        split=args.split,
+        imgsz=IMG_SIZE,
+        batch=args.batch,
+        device=args.device,
+        workers=args.workers,
+        project=str(SCRIPT_DIR / "runs" / "detect"),
+        name=f"{args.split}_{weights.stem}",
+        exist_ok=True,
+        plots=True,
+    )
+
+    print(f"\n{args.split} metrics:")
+    for name, value in results.results_dict.items():
+        print(f"  {name}: {float(value):.6f}")
+    if results.box is not None:
+        print("Per-class mAP50-95:")
+        for class_id, value in enumerate(results.box.maps):
+            print(f"  {class_id} {CLASS_NAMES[class_id]}: {float(value):.6f}")
+    print(f"Validation output: {results.save_dir}")
+
+
+def export_onnx(args: argparse.Namespace) -> None:
     import onnx
-    from ultralytics.nn.modules import Detect, Attention
-    from ultralytics.engine.exporter import Exporter, try_export, arange_patch
+    import torch
+    from ultralytics import YOLO
+    from ultralytics.engine.exporter import Exporter, arange_patch, try_export
+    from ultralytics.nn.modules import Attention, Detect
     from ultralytics.utils import LOGGER, colorstr
     from ultralytics.utils.checks import check_requirements
 
-    # ---- ESP-DL 自定义检测头: 分离 box/score, 移除 DFL ----
-    class ESP_Detect(Detect):
+    weights = require_file(resolve_path(args.weights), "Weights")
+    output = resolve_path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+
+    class ESPDetect(Detect):
         def forward(self, x):
             return (
-                self.cv2[0](x[0]), self.cv3[0](x[0]),  # stride 8
-                self.cv2[1](x[1]), self.cv3[1](x[1]),  # stride 16
-                self.cv2[2](x[2]), self.cv3[2](x[2]),  # stride 32
+                self.cv2[0](x[0]), self.cv3[0](x[0]),
+                self.cv2[1](x[1]), self.cv3[1](x[1]),
+                self.cv2[2](x[2]), self.cv3[2](x[2]),
             )
 
-    class ESP_Attention(Attention):
+    class ESPAttention(Attention):
         def forward(self, x):
-            B, C, H, W = x.shape
-            N = H * W
+            batch, channels, height, width = x.shape
+            count = height * width
             qkv = self.qkv(x)
-            q, k, v = qkv.view(-1, self.num_heads, self.key_dim * 2 + self.head_dim, N) \
-                       .split([self.key_dim, self.key_dim, self.head_dim], dim=2)
-            attn = (q.transpose(-2, -1) @ k) * self.scale
-            attn = attn.softmax(dim=-1)
-            x = (v @ attn.transpose(-2, -1)).view(-1, C, H, W) + self.pe(v.reshape(-1, C, H, W))
+            q, k, v = qkv.view(
+                -1, self.num_heads, self.key_dim * 2 + self.head_dim, count
+            ).split([self.key_dim, self.key_dim, self.head_dim], dim=2)
+            attention = (q.transpose(-2, -1) @ k) * self.scale
+            attention = attention.softmax(dim=-1)
+            x = (v @ attention.transpose(-2, -1)).view(
+                -1, channels, height, width
+            ) + self.pe(v.reshape(-1, channels, height, width))
             return self.proj(x)
 
-    class ESP_Detect_Exporter(Exporter):
+    class ESPDetectExporter(Exporter):
         @try_export
         def export_onnx(self, prefix=colorstr("ONNX:")):
-            check_requirements(["onnx>=1.14.0"])
-            f = ONNX_NAME
+            check_requirements(["onnx>=1.14.0,<1.18.0"])
             output_names = ["box0", "score0", "box1", "score1", "box2", "score2"]
 
             with arange_patch(self.args):
-                torch.onnx.export(self.model, self.im, f,
-                    verbose=False, opset_version=13,
+                torch.onnx.export(
+                    self.model,
+                    self.im,
+                    str(output),
+                    verbose=False,
+                    opset_version=13,
                     do_constant_folding=False,
-                    input_names=["images"], output_names=output_names)
+                    input_names=["images"],
+                    output_names=output_names,
+                )
 
-            model_onnx = onnx.load(f)
-            onnx.save(model_onnx, f)
-            LOGGER.info(f"{prefix} saved: {f}")
-            return f, model_onnx
+            model_onnx = onnx.load(str(output))
+            onnx.checker.check_model(model_onnx)
+            onnx.save(model_onnx, str(output))
+            LOGGER.info(f"{prefix} saved: {output}")
+            return str(output)
 
-    # Patch + export
-    model2 = YOLO(best)
-    for m in model2.modules():
-        if isinstance(m, Attention): m.forward = ESP_Attention.forward.__get__(m)
-        if isinstance(m, Detect):    m.forward = ESP_Detect.forward.__get__(m)
+    model = YOLO(str(weights))
+    for module in model.modules():
+        if isinstance(module, Attention):
+            module.forward = ESPAttention.forward.__get__(module)
+        if isinstance(module, Detect):
+            module.forward = ESPDetect.forward.__get__(module)
 
-    custom = {"format": "onnx", "imgsz": IMG_SIZE, "batch": 1, "data": None,
-              "device": None, "verbose": False}
-    args = {**model2.overrides, **custom, "mode": "export"}
-    ESP_Detect_Exporter(overrides=args, _callbacks=model2.callbacks)(model=model2.model)
-    print(f"ONNX 导出完成: {ONNX_NAME}")
+    custom = {
+        "format": "onnx",
+        "imgsz": IMG_SIZE,
+        "batch": 1,
+        "data": None,
+        "device": "cpu",
+        "verbose": False,
+    }
+    exporter_args = {**model.overrides, **custom, "mode": "export"}
+    ESPDetectExporter(overrides=exporter_args, _callbacks=model.callbacks)(model=model.model)
+    print(f"ONNX export complete: {output}")
 
-    # ===== STEP 3: INT8 量化 (ESP-PPQ → .espdl) =====
-    print("\n" + "=" * 60)
-    print("STEP 3: ESP-PPQ INT8 量化 → .espdl")
-    print("=" * 60)
 
-    calib_dir = "val/images"
-    if not os.path.isdir(calib_dir):
-        print(f"WARNING: 验证集 {calib_dir} 不存在, 使用 train/images")
-        calib_dir = "train/images"
+def build_calibration_loader(manifest: Path, image_count: int):
+    import numpy as np
+    import torch
+    from PIL import Image
+    from torch.utils.data import DataLoader, Dataset, Subset
 
-    dataset = CalibDataset(calib_dir)
-    n_calib = min(200, len(dataset))
-    indices = list(range(0, len(dataset), max(1, len(dataset) // n_calib)))[:n_calib]
-    calib_subset = torch.utils.data.Subset(dataset, indices)
-    calib_loader = DataLoader(calib_subset, batch_size=1, shuffle=False, num_workers=0)
-    print(f"校准样本: {len(calib_subset)} 张")
+    class CalibrationDataset(Dataset):
+        def __init__(self, list_path: Path):
+            lines = [line.strip() for line in list_path.read_text(encoding="utf-8").splitlines()]
+            self.files = [
+                (SCRIPT_DIR / line).resolve()
+                for line in lines
+                if line and not line.startswith("#")
+            ]
+            missing = [path for path in self.files if not path.is_file()]
+            if missing:
+                raise FileNotFoundError(f"Calibration image not found: {missing[0]}")
+            if not self.files:
+                raise ValueError(f"Calibration manifest is empty: {list_path}")
 
+        def __len__(self):
+            return len(self.files)
+
+        def __getitem__(self, index):
+            image = Image.open(self.files[index]).convert("RGB")
+            image = image.resize((IMG_SIZE, IMG_SIZE), Image.Resampling.BILINEAR)
+            array = np.asarray(image, dtype=np.float32) / 255.0
+            return torch.from_numpy(array).permute(2, 0, 1).contiguous()
+
+    dataset = CalibrationDataset(manifest)
+    sample_count = min(image_count, len(dataset))
+    indices = [index * len(dataset) // sample_count for index in range(sample_count)]
+    subset = Subset(dataset, indices)
+    loader = DataLoader(subset, batch_size=1, shuffle=False, num_workers=0)
+    return loader, sample_count
+
+
+def quantize(args: argparse.Namespace) -> None:
     from esp_ppq.api import espdl_quantize_onnx
 
+    onnx_path = require_file(resolve_path(args.onnx), "ONNX model")
+    manifest = require_file(resolve_path(args.calibration), "Calibration manifest")
+    output = resolve_path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    loader, sample_count = build_calibration_loader(manifest, args.calibration_images)
+
+    print(f"Calibration images: {sample_count}")
     espdl_quantize_onnx(
-        onnx_import_file=ONNX_NAME,
-        espdl_export_file=ESPDL_NAME,
-        calib_dataloader=calib_loader,
-        calib_steps=len(calib_subset),
+        onnx_import_file=str(onnx_path),
+        espdl_export_file=str(output),
+        calib_dataloader=loader,
+        calib_steps=sample_count,
         input_shape=[1, 3, IMG_SIZE, IMG_SIZE],
         target="esp32s3",
         num_of_bits=8,
         device="cpu",
-        error_report=True,
+        error_report=args.error_report,
         verbose=1,
-        export_test_values=True,        # 启用板端 model->test()
-        test_output_names=[
-            "box0", "score0", "box1", "score1", "box2", "score2",
-        ],
+        export_test_values=True,
+        test_output_names=["box0", "score0", "box1", "score1", "box2", "score2"],
     )
 
-    sz = os.path.getsize(ESPDL_NAME) / (1024 * 1024)
-    print(f"\nESP-DL 模型: {ESPDL_NAME} ({sz:.2f} MB)")
+    size_mb = output.stat().st_size / (1024 * 1024)
+    print(f"ESP-DL quantization complete: {output} ({size_mb:.2f} MB)")
 
-    # 自动部署到固件目录
-    dst = "../main/model/yolo11n_esp32s3.espdl"
-    os.makedirs(os.path.dirname(dst), exist_ok=True)
-    shutil.copy(ESPDL_NAME, dst)
-    print(f"已复制到 {dst}")
-    print("\n完成! 运行 'idf.py build flash monitor' 部署")
+
+def deploy(args: argparse.Namespace) -> None:
+    source = require_file(resolve_path(args.model), "ESP-DL model")
+    destination = resolve_path(args.destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+    print(f"Model deployed: {destination}")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Run cloud training and local ESP-DL conversion as explicit steps."
+    )
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    train_parser = subparsers.add_parser("train", help="Train YOLO11n (AutoDL GPU).")
+    train_parser.add_argument("--model", default="yolo11n.pt")
+    train_parser.add_argument("--epochs", type=int, default=100)
+    train_parser.add_argument("--batch", type=int, default=32)
+    train_parser.add_argument("--device", default="0")
+    train_parser.add_argument("--workers", type=int, default=4)
+    train_parser.add_argument("--patience", type=int, default=20)
+    train_parser.add_argument("--name", default="train_cloud")
+    train_parser.add_argument(
+        "--resume",
+        action="store_true",
+        help="Resume an interrupted run; --model must point to its last.pt.",
+    )
+    train_parser.set_defaults(handler=train)
+
+    validate_parser = subparsers.add_parser("validate", help="Evaluate weights on val or test.")
+    validate_parser.add_argument("--weights", required=True)
+    validate_parser.add_argument("--split", choices=("val", "test"), default="val")
+    validate_parser.add_argument("--batch", type=int, default=32)
+    validate_parser.add_argument("--device", default="0")
+    validate_parser.add_argument("--workers", type=int, default=4)
+    validate_parser.set_defaults(handler=validate)
+
+    export_parser = subparsers.add_parser(
+        "export-onnx", help="Export ESP-DL-compatible ONNX on the local computer."
+    )
+    export_parser.add_argument("--weights", required=True)
+    export_parser.add_argument("--output", default=str(DEFAULT_ONNX))
+    export_parser.set_defaults(handler=export_onnx)
+
+    quantize_parser = subparsers.add_parser(
+        "quantize", help="Quantize ONNX to INT8 ESP-DL on the local CPU."
+    )
+    quantize_parser.add_argument("--onnx", default=str(DEFAULT_ONNX))
+    quantize_parser.add_argument("--output", default=str(DEFAULT_ESPDL))
+    quantize_parser.add_argument("--calibration", default="splits/val.txt")
+    quantize_parser.add_argument("--calibration-images", type=int, default=200)
+    quantize_parser.add_argument(
+        "--error-report",
+        action="store_true",
+        help="Run slow graph and layer quantization error analysis.",
+    )
+    quantize_parser.set_defaults(handler=quantize)
+
+    deploy_parser = subparsers.add_parser(
+        "deploy", help="Copy an ESP-DL model into the firmware model directory."
+    )
+    deploy_parser.add_argument("--model", default=str(DEFAULT_ESPDL))
+    deploy_parser.add_argument("--destination", default=str(DEFAULT_DEPLOY_PATH))
+    deploy_parser.set_defaults(handler=deploy)
+
+    return parser
+
+
+def main() -> None:
+    os.chdir(SCRIPT_DIR)
+    args = build_parser().parse_args()
+    args.handler(args)
 
 
 if __name__ == "__main__":

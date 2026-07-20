@@ -105,11 +105,16 @@
 | 架构 | YOLO11n (2.6M params, 6.3 GFLOPs) |
 | 输入尺寸 | 320×320 RGB |
 | 量化 | INT8 (ESP-PPQ) |
-| 模型大小 | 2.81 MB |
-| **mAP@0.5** | **0.577** |
-| **Precision** | **0.715** |
-| **Recall** | **0.576** |
-| 推理时间 | ~4.6s (ESP32-S3 双核) |
+| 模型大小 | 3.12 MiB (`.espdl`) |
+| **独立测试集 mAP@0.5** | **0.413506** |
+| **独立测试集 mAP@0.5:0.95** | **0.201516** |
+| **Precision** | **0.611435** |
+| **Recall** | **0.399792** |
+| 推理时间 | ~4.45s (ESP32-S3，实测) |
+
+以上为 `train_cloud_20260719` 在无数据泄漏独立测试集（302张、4440个实例）
+上的结果。该版本已完成 ESP-DL INT8 量化和板端自检，但整体召回率仍偏低，适合项目
+闭环演示和后续数据迭代，不应作为高可靠生产模型宣传。
 
 ### 训练配置 (V6)
 
@@ -252,18 +257,22 @@ OV5640 实拍数据应单独保存在 `device_test/images/` 和
 `device_test/labels/`，不要混入网络图片测试集。正式指标同时报告独立
 测试集结果和真实设备场景结果。
 
-### 训练 + 导出 + 量化
+### 云端训练 + 本地导出量化
 
 ```bash
-# 一键训练、导出 ONNX、量化为 .espdl
-python train_and_export.py
+# AutoDL GPU
+python train_and_export.py train
+python train_and_export.py validate --weights runs/detect/train_cloud/weights/best.pt --split val
+
+# 本地 CPU
+python train_and_export.py export-onnx --weights best.pt
+python train_and_export.py quantize
+python train_and_export.py deploy
 ```
 
-脚本自动完成：
-1. 使用 CUDA 训练 YOLO11n (100 epochs)
-2. 导出自定义 ONNX (ESP-DL 兼容)
-3. INT8 量化 (ESP-PPQ)
-4. 复制到 `main/model/`
+脚本使用显式子命令，避免云端训练环境与 ESP-PPQ 量化环境互相污染。
+完整上传清单、AutoDL命令、结果下载清单和本地虚拟环境配置见
+[`ziliao/AutoDL云训练与本地ESP-DL量化指南-2026-07-19.md`](ziliao/AutoDL云训练与本地ESP-DL量化指南-2026-07-19.md)。
 
 云端训练前先确认 CUDA 可用：
 
@@ -321,10 +330,10 @@ CONFIG_CAMERA_JPEG_MODE_FRAME_BUFFER_SIZE=65536
 
 | 组件 | 版本 | 用途 |
 |------|------|------|
-| espressif/esp-dl | ^3.3.3 | 深度学习推理 |
-| espressif/esp32-camera | * | 摄像头驱动 |
-| esp-ppq | 1.2.11 | 模型量化 |
-| ultralytics | 8.4.41 | YOLO 训练 |
+| espressif/esp-dl | 3.3.5 | 深度学习推理、标量参数加载修复 |
+| espressif/esp32-camera | 2.0.15 | 摄像头驱动 |
+| esp-ppq | 1.3.6 | 模型量化 |
+| ultralytics | 8.4.72 | YOLO 训练与验证 |
 
 ---
 
@@ -363,7 +372,10 @@ CONFIG_CAMERA_JPEG_MODE_FRAME_BUFFER_SIZE=65536
 |------|---------|-----------|--------|------|
 | V3 | 0.573 | 0.734 | 0.646 | 基准版本 |
 | V5 | 0.584 | 0.676 | 0.635 | 训练稳定性改善 |
-| **V6** | **0.577** | **0.715** | **0.576** | **降误判优化 (当前)** |
+| V6 | 0.577 | 0.715 | 0.576 | 旧划分下的降误判版本 |
+| **Cloud INT8 V1.0** | **0.414** | **0.611** | **0.400** | **无泄漏测试集，当前板端版本** |
+
+版本发布记录、模型哈希和验证证据见 [`CHANGELOG.md`](CHANGELOG.md)。
 
 ---
 

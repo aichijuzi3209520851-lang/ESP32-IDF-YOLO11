@@ -1,0 +1,4 @@
+# The AutoDL base image already provides PyTorch with CUDA 12.8.
+# Do not reinstall torch from this file or CUDA support may be replaced.
+ultralytics==8.4.72
+PyYAML>=6.0

@@ -8,8 +8,8 @@ targets:
 # External dependencies from the Espressif component registry:
 dependencies:
   espressif/led_strip: ^2.4.1
-  espressif/esp32-camera: '*'
-  espressif/esp-dl: ^3.3.3
+  espressif/esp32-camera: ==2.0.15
+  espressif/esp-dl: ==3.3.5
 requires:
 - esp_wifi
 - esp_event

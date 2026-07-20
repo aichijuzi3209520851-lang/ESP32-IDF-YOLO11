@@ -1,11 +1,20 @@
 # Large files exceeding GitHub limit
 *.zip
+yolov11-cloud-upload*.tar.gz
+yolov11-cloud-upload*.part*
+train_cloud_*-results.tar.gz
+build_codex_*/
 
 # Python cache
 __pycache__/
 *.pyc
 *.pyo
 yolov11/audit/
+yolov11/.venv-espdl/
+yolov11/cloud-results-*/
+yolov11/model-backups/
+yolov11/runs/
+yolov11/*.info
 
 # OS
 .DS_Store
