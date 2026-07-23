@@ -216,6 +216,12 @@ OV5640 摄像头 (320×320 JPEG)
 - Python 3.8+ (训练模型)
 - CUDA GPU (可选，用于训练)
 
+### Wi-Fi 配置
+
+复制 `main/wifi/wifi_config.example.h` 为
+`main/wifi/wifi_config.local.h`，然后在本地文件中填写 Wi-Fi 名称和密码。
+`wifi_config.local.h` 已被 Git 忽略，不会提交到远端仓库。
+
 ### 编译烧录
 
 ```bash

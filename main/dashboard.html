@@ -3,35 +3,53 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>光伏板脏污识别系统</title>
-    <!-- 外部资源 -->
+    <title>ESP32-S3 光伏板脏污识别智能监控系统 - 工程控制台</title>
+    <!-- 引入 Inter & JetBrains Mono 字体 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <!-- Chart.js 图表库 -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+
     <style>
-        /* ========== 全局样式重置 & 基础变量 ========== */
+        /* ========== 工程仪表盘配色与设计系统 (低“AI味”、高清晰度) ========== */
         :root {
-            --color-bg-primary: #0a0e17;
-            --color-bg-secondary: #111827;
-            --color-bg-tertiary: #0f172a;
-            --color-border: #1e293b;
-            --color-border-light: #334155;
-            --color-text-primary: #c8d6e5;
-            --color-text-secondary: #94a3b8;
-            --color-text-tertiary: #64748b;
-            --color-success: #22c55e;
-            --color-warning: #f59e0b;
-            --color-danger: #ef4444;
-            --color-info: #3b82f6;
-            --color-cyan: #06b6d4;
-            --spacing-xs: 4px;
-            --spacing-sm: 8px;
-            --spacing-md: 16px;
-            --spacing-lg: 20px;
-            --spacing-xl: 24px;
-            --border-radius-sm: 4px;
-            --border-radius-md: 6px;
-            --border-radius-lg: 10px;
-            --transition-default: all 0.2s ease;
-            --shadow-sm: 0 2px 4px rgba(0,0,0,0.1);
+            --bg-page: #F4F6F8;
+            --bg-card: #FFFFFF;
+            --bg-subtle: #EDF1F5;
+            --bg-hover: #F8FAFC;
+            --bg-dark-panel: #1E293B;
+
+            --border-color: #D8DEE6;
+            --border-light: #E2E8F0;
+            --border-dark: #334155;
+
+            --text-primary: #1F2933;
+            --text-secondary: #667085;
+            --text-muted: #98A2B3;
+            --text-white: #FFFFFF;
+
+            --brand-primary: #245C8D;
+            --brand-primary-hover: #1D4A73;
+            --brand-light: #EBF3FA;
+
+            --state-success: #2E7D5B;
+            --state-success-bg: #E8F5E9;
+            --state-warning: #C47A18;
+            --state-warning-bg: #FFF8E1;
+            --state-danger: #BE3B3B;
+            --state-danger-bg: #FFEBEE;
+            --state-info: #0284C7;
+            --state-info-bg: #E0F2FE;
+
+            --radius-sm: 4px;
+            --radius-md: 8px;
+            --radius-lg: 12px;
+
+            --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+            --shadow-subtle: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+            --shadow-card: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
         }
 
         * {
@@ -41,1077 +59,1329 @@
         }
 
         body {
-            background: var(--color-bg-primary);
-            color: var(--color-text-primary);
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-page);
+            color: var(--text-primary);
+            font-family: var(--font-main);
             min-height: 100vh;
-            display: flex;
             line-height: 1.5;
+            font-size: 14px;
+            -webkit-font-smoothing: antialiased;
         }
 
-        /* ========== 侧边栏 ========== */
-        .sidebar {
-            width: 240px;
-            background: var(--color-bg-secondary);
-            padding: var(--spacing-md) 0;
+        /* 顶部控制栏 */
+        .top-navbar {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 24px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-subtle);
+        }
+
+        .brand-logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--brand-primary);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #fff;
+        }
+
+        .brand-title h1 {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.2px;
+        }
+
+        .brand-title p {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+        }
+
+        .sys-status-group {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: var(--radius-sm);
+            font-size: 12px;
+            font-weight: 500;
+            font-family: var(--font-mono);
+            border: 1px solid var(--border-color);
+            background: var(--bg-subtle);
+        }
+
+        .status-badge.online {
+            background: var(--state-success-bg);
+            color: var(--state-success);
+            border-color: rgba(46, 125, 91, 0.3);
+        }
+
+        .status-badge.warning {
+            background: var(--state-warning-bg);
+            color: var(--state-warning);
+            border-color: rgba(196, 122, 24, 0.3);
+        }
+
+        .status-badge.danger {
+            background: var(--state-danger-bg);
+            color: var(--state-danger);
+            border-color: rgba(190, 59, 59, 0.3);
+        }
+
+        .status-dot {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: currentColor;
+        }
+
+        /* 模式切换下拉/按钮组 */
+        .mode-selector {
+            display: flex;
+            align-items: center;
+            background: var(--bg-subtle);
+            padding: 3px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-color);
+        }
+
+        .mode-btn {
+            padding: 4px 12px;
+            font-size: 12px;
+            font-weight: 600;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            border-radius: calc(var(--radius-sm) - 1px);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+
+        .mode-btn.active {
+            background: var(--bg-card);
+            color: var(--brand-primary);
+            box-shadow: var(--shadow-subtle);
+        }
+
+        /* 主容器结构 */
+        .main-container {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 24px;
             display: flex;
             flex-direction: column;
-            flex-shrink: 0;
-            transition: var(--transition-default);
-            box-shadow: var(--shadow-sm);
+            gap: 20px;
         }
 
-        .sidebar .logo {
-            text-align: center;
-            padding: 0 var(--spacing-md) var(--spacing-xl);
-            border-bottom: 1px solid var(--color-border);
-            margin-bottom: var(--spacing-md);
-        }
-
-        .sidebar .logo h2 {
-            font-size: 16px;
-            color: var(--color-info);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: var(--spacing-xs);
-        }
-
-        .sidebar .logo p {
-            font-size: 11px;
-            color: var(--color-text-tertiary);
-            margin-top: var(--spacing-xs);
-        }
-
-        .sidebar nav a {
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-sm);
-            padding: var(--spacing-sm) var(--spacing-md);
-            color: var(--color-text-secondary);
-            text-decoration: none;
-            font-size: 13px;
-            transition: var(--transition-default);
-            border-left: 3px solid transparent;
-        }
-
-        .sidebar nav a:hover,
-        .sidebar nav a.active {
-            background: var(--color-bg-tertiary);
-            color: var(--color-text-primary);
-            border-left-color: var(--color-info);
-        }
-
-        .sidebar nav a .dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }
-
-        .sidebar nav a .dot.green {
-            background: var(--color-success);
-        }
-
-        .sidebar nav a .dot.blue {
-            background: var(--color-info);
-        }
-
-        .sidebar nav a .dot.orange {
-            background: var(--color-warning);
-        }
-
-        /* ========== 主内容区 ========== */
-        .main {
-            flex: 1;
-            padding: var(--spacing-md) var(--spacing-lg);
-            overflow-y: auto;
-        }
-
-        .main h1 {
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: var(--spacing-xl);
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-xs);
-        }
-
-        /* ========== KPI卡片 ========== */
-        .cards {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: var(--spacing-md);
-            margin-bottom: var(--spacing-xl);
-        }
-
-        .card {
-            background: var(--color-bg-secondary);
-            border-radius: var(--border-radius-lg);
-            padding: var(--spacing-md);
-            border: 1px solid var(--color-border);
-            transition: var(--transition-default);
-        }
-
-        .card:hover {
-            box-shadow: var(--shadow-sm);
-            border-color: var(--color-border-light);
-        }
-
-        .card .label {
-            font-size: 11px;
-            color: var(--color-text-tertiary);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .card .value {
-            font-size: 28px;
-            font-weight: 700;
-            margin: var(--spacing-sm) 0;
-            line-height: 1.2;
-        }
-
-        .card .unit {
-            font-size: 12px;
-            color: var(--color-text-secondary);
-        }
-
-        .card .trend {
-            font-size: 11px;
-            margin-top: var(--spacing-xs);
-            display: flex;
-            align-items: center;
-            gap: 2px;
-        }
-
-        .card .trend.up {
-            color: var(--color-success);
-        }
-
-        .card .trend.down {
-            color: var(--color-danger);
-        }
-
-        /* ========== 图表区域 ========== */
-        .charts {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: var(--spacing-md);
-            margin-bottom: var(--spacing-xl);
-        }
-
-        .chart-box {
-            background: var(--color-bg-secondary);
-            border-radius: var(--border-radius-lg);
-            padding: var(--spacing-md);
-            border: 1px solid var(--color-border);
-        }
-
-        .chart-box h3 {
-            font-size: 13px;
-            color: var(--color-text-secondary);
-            margin-bottom: var(--spacing-sm);
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-
-        canvas {
-            width: 100% !important;
-            height: 200px !important;
-        }
-
-        /* ========== 视频流 & 检测列表 ========== */
-        .stream-row {
-            display: grid;
-            grid-template-columns: 1.4fr 1fr;
-            gap: var(--spacing-md);
-            margin-bottom: var(--spacing-xl);
-        }
-
-        .stream-box {
-            background: var(--color-bg-secondary);
-            border-radius: var(--border-radius-lg);
-            padding: var(--spacing-md);
-            border: 1px solid var(--color-border);
-            position: relative;
-        }
-
-        .stream-box h3 {
-            font-size: 13px;
-            color: var(--color-text-secondary);
-            margin-bottom: var(--spacing-sm);
-        }
-
-        .stream-wrap {
-            position: relative;
-            background: #000;
-            border-radius: var(--border-radius-md);
+        /* 网格布局通用框 */
+        .card-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-subtle);
             overflow: hidden;
+        }
+
+        .panel-header {
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border-light);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: #FAFBFD;
+        }
+
+        .panel-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .panel-subtitle {
+            font-size: 11px;
+            color: var(--text-secondary);
+            font-family: var(--font-mono);
+            font-weight: normal;
+        }
+
+        .panel-body {
+            padding: 20px;
+        }
+
+        /* 1. 顶部指标 KPI 栅格 (4列) */
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .kpi-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            padding: 16px 20px;
+            box-shadow: var(--shadow-subtle);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+        }
+
+        .kpi-label {
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .kpi-value-wrap {
+            margin: 10px 0 6px;
+            display: flex;
+            align-items: baseline;
+            gap: 6px;
+        }
+
+        .kpi-value {
+            font-family: var(--font-mono);
+            font-size: 26px;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.1;
+        }
+
+        .kpi-unit {
+            font-size: 12px;
+            color: var(--text-secondary);
+            font-weight: 500;
+        }
+
+        .kpi-footer {
+            font-size: 11px;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            border-top: 1px solid var(--border-light);
+            padding-top: 8px;
+            margin-top: 4px;
+        }
+
+        /* 2. 视频与 AI 推理流 1:1 双栏 */
+        .stream-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .video-wrapper {
+            position: relative;
+            background: #0F172A;
+            border-radius: var(--radius-sm);
             aspect-ratio: 4/3;
+            overflow: hidden;
             display: flex;
             align-items: center;
             justify-content: center;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
         }
 
-        .stream-wrap img {
+        .video-wrapper img {
             width: 100%;
             height: 100%;
             object-fit: contain;
         }
 
-        .stream-overlay {
-            display: flex;
-            justify-content: space-between;
-            padding: var(--spacing-xs) var(--spacing-sm);
+        .video-hint {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            background: rgba(15, 23, 42, 0.85);
+            color: #FFFFFF;
+            padding: 4px 8px;
+            border-radius: var(--radius-sm);
             font-size: 11px;
-            color: var(--color-text-tertiary);
-            margin-top: var(--spacing-xs);
+            font-family: var(--font-mono);
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            opacity: 0.9;
+            border: 1px solid var(--border-dark);
         }
 
-        .stream-overlay span:first-child {
-            color: var(--color-success);
-            animation: pulse 2s infinite;
+        .stream-meta {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 12px;
+            font-family: var(--font-mono);
+            color: var(--text-secondary);
         }
 
-        .stream-side {
+        /* 3. 物理传感器与天气模拟双分区 (核心要求) */
+        .partition-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .partition-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-md);
+            box-shadow: var(--shadow-subtle);
             display: flex;
             flex-direction: column;
-            gap: var(--spacing-md);
         }
 
-        /* ========== 仪表盘 & 检测列表 ========== */
-        .gauge-row {
+        .partition-tag {
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 2px;
+            text-transform: uppercase;
+            font-family: var(--font-mono);
+        }
+
+        .tag-real {
+            background: var(--state-success-bg);
+            color: var(--state-success);
+            border: 1px solid rgba(46, 125, 91, 0.2);
+        }
+
+        .tag-simulated {
+            background: var(--state-info-bg);
+            color: var(--state-info);
+            border: 1px solid rgba(2, 132, 199, 0.2);
+        }
+
+        .telemetry-row {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: var(--spacing-md);
-            margin-bottom: var(--spacing-xl);
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 16px;
         }
 
-        .gauge-box, .detection-list {
-            background: var(--color-bg-secondary);
-            border-radius: var(--border-radius-lg);
-            padding: var(--spacing-md);
-            border: 1px solid var(--color-border);
+        .telemetry-item {
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            padding: 12px;
         }
 
-        .gauge-box h3, .detection-list h3 {
-            font-size: 13px;
-            color: var(--color-text-secondary);
-            margin-bottom: var(--spacing-sm);
+        .telemetry-title {
+            font-size: 11px;
+            color: var(--text-secondary);
+            margin-bottom: 4px;
+        }
+
+        .telemetry-num {
+            font-family: var(--font-mono);
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+
+        /* 模拟天气按键按钮组 */
+        .weather-btn-group {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 10px;
+            margin-bottom: 16px;
+        }
+
+        .weather-btn {
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 10px 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.15s ease;
             display: flex;
+            flex-direction: column;
             align-items: center;
             gap: 4px;
         }
 
-        .gauge-box {
-            text-align: center;
+        .weather-btn:hover {
+            background: var(--bg-hover);
+            border-color: var(--brand-primary);
         }
 
-        .gauge-circle {
-            width: 120px;
-            height: 120px;
-            margin: 0 auto;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 32px;
-            font-weight: 700;
-            position: relative;
-            transition: var(--transition-default);
-        }
-
-        .gauge-circle::after {
-            content: '';
-            position: absolute;
-            width: 100px;
-            height: 100px;
-            border-radius: 50%;
-            background: var(--color-bg-secondary);
-        }
-
-        .gauge-circle span {
-            position: relative;
-            z-index: 1;
-        }
-
-        .gauge-circle.clean {
-            background: conic-gradient(var(--color-success) 0deg 72deg, var(--color-border) 72deg 360deg);
-        }
-
-        .gauge-circle.dirty {
-            background: conic-gradient(var(--color-warning) 0deg 288deg, var(--color-border) 288deg 360deg);
-        }
-
-        .gauge-box p {
-            margin-top: var(--spacing-sm);
-            font-size: 12px;
-            color: var(--color-text-secondary);
-        }
-
-        .det-item {
-            display: flex;
-            align-items: center;
-            gap: var(--spacing-sm);
-            padding: var(--spacing-sm) var(--spacing-md);
-            border-radius: var(--border-radius-md);
-            margin-bottom: var(--spacing-xs);
-            font-size: 13px;
-            background: var(--color-bg-tertiary);
-            transition: var(--transition-default);
-        }
-
-        .det-item:hover {
-            background: rgba(30, 41, 59, 0.8);
-        }
-
-        .det-item .badge {
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 11px;
+        .weather-btn.active {
+            background: var(--brand-light);
+            border-color: var(--brand-primary);
+            color: var(--brand-primary);
             font-weight: 600;
         }
 
-        .badge.bird {
-            background: #fef3c7;
-            color: #92400e;
+        .weather-btn svg {
+            width: 20px;
+            height: 20px;
+            stroke: currentColor;
+            fill: none;
+            stroke-width: 2;
         }
 
-        .badge.crack {
-            background: #fee2e2;
-            color: #991b1b;
+        .weather-btn-title {
+            font-size: 12px;
         }
 
-        .badge.dust {
-            background: #f3e8ff;
-            color: #6b21a8;
+        /* 决策规则与动作结果 */
+        .rule-matrix {
+            background: var(--bg-subtle);
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            padding: 12px 14px;
         }
 
-        .badge.shadow {
-            background: #e0e7ff;
-            color: #3730a3;
-        }
-
-        .badge.hotspot {
-            background: #fce7f3;
-            color: #9d174d;
-        }
-
-        .badge.panel {
-            background: #ccfbf1;
-            color: #115e59;
-        }
-
-        .det-item span:last-child {
-            margin-left: auto;
-            color: var(--color-text-tertiary);
-        }
-
-        /* ========== 控制区域 ========== */
-        .controls {
-            background: var(--color-bg-secondary);
-            border-radius: var(--border-radius-lg);
-            padding: var(--spacing-lg);
-            border: 1px solid var(--color-border);
-            margin-bottom: var(--spacing-xl);
-        }
-
-        .controls h3 {
-            font-size: 14px;
-            margin-bottom: var(--spacing-md);
+        .rule-row {
             display: flex;
             align-items: center;
-            gap: 4px;
+            justify-content: space-between;
+            font-size: 12px;
+            padding: 6px 0;
+            border-bottom: 1px dashed var(--border-color);
         }
 
-        .btn-row {
+        .rule-row:last-child {
+            border-bottom: none;
+        }
+
+        .rule-label {
+            color: var(--text-secondary);
             display: flex;
-            gap: var(--spacing-md);
+            align-items: center;
+            gap: 6px;
+        }
+
+        .rule-val {
+            font-family: var(--font-mono);
+            font-weight: 600;
+        }
+
+        /* 4. 设备控制与命令参数 */
+        .control-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
             flex-wrap: wrap;
-            margin-bottom: var(--spacing-md);
         }
 
         .btn {
-            padding: var(--spacing-sm) var(--spacing-xl);
-            border-radius: var(--border-radius-md);
-            border: none;
+            padding: 8px 16px;
+            border-radius: var(--radius-sm);
             font-size: 13px;
             font-weight: 600;
             cursor: pointer;
-            transition: var(--transition-default);
-            color: #fff;
-            display: flex;
+            border: 1px solid transparent;
+            transition: all 0.15s ease;
+            display: inline-flex;
             align-items: center;
-            gap: 4px;
+            gap: 6px;
+            font-family: var(--font-main);
         }
 
-        .btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
+        .btn-primary {
+            background: var(--brand-primary);
+            color: #ffffff;
+        }
+        .btn-primary:hover {
+            background: var(--brand-primary-hover);
         }
 
-        .btn-start {
-            background: var(--color-success);
+        .btn-danger {
+            background: var(--state-danger);
+            color: #ffffff;
+        }
+        .btn-danger:hover {
+            background: #A63232;
         }
 
-        .btn-start:hover:not(:disabled) {
-            background: #16a34a;
-            transform: translateY(-1px);
+        .btn-outline {
+            background: var(--bg-card);
+            border-color: var(--border-color);
+            color: var(--text-primary);
+        }
+        .btn-outline:hover {
+            background: var(--bg-subtle);
+            border-color: var(--text-secondary);
         }
 
-        .btn-stop {
-            background: var(--color-danger);
-        }
-
-        .btn-stop:hover:not(:disabled) {
-            background: #dc2626;
-            transform: translateY(-1px);
-        }
-
-        .btn-setting {
-            background: var(--color-info);
-        }
-
-        .btn-setting:hover:not(:disabled) {
-            background: #2563eb;
-            transform: translateY(-1px);
-        }
-
-        /* ========== 设置面板 ========== */
-        .settings {
+        /* 5. 损伤警告 Modal 弹窗 */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.6);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
             display: none;
-            background: var(--color-bg-tertiary);
-            border-radius: var(--border-radius-md);
-            padding: var(--spacing-md);
-            margin-top: var(--spacing-sm);
-            border: 1px solid var(--color-border);
-            animation: fadeIn 0.3s ease;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
         }
 
-        .settings.show {
-            display: block;
+        .modal-backdrop.show {
+            display: flex;
         }
 
-        .set-row {
+        .modal-card {
+            background: var(--bg-card);
+            border: 1px solid var(--state-danger);
+            border-radius: var(--radius-md);
+            max-width: 520px;
+            width: 100%;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-header {
+            background: var(--state-danger-bg);
+            border-bottom: 1px solid rgba(190, 59, 59, 0.2);
+            padding: 14px 20px;
             display: flex;
             align-items: center;
-            gap: var(--spacing-md);
-            margin-bottom: var(--spacing-sm);
+            justify-content: space-between;
+            color: var(--state-danger);
+        }
+
+        .modal-header h3 {
+            font-size: 15px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .modal-body {
+            padding: 20px;
+            color: var(--text-primary);
             font-size: 13px;
-            flex-wrap: wrap;
+            line-height: 1.6;
         }
 
-        .set-row label {
-            width: 100px;
-            color: var(--color-text-secondary);
-            flex-shrink: 0;
+        .modal-footer {
+            padding: 12px 20px;
+            background: var(--bg-subtle);
+            border-top: 1px solid var(--border-light);
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
         }
 
-        .set-row input,
-        .set-row select {
+        /* 图像全屏放大会话 Modal */
+        .lightbox-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.88);
+            z-index: 1050;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .lightbox-backdrop.show {
+            display: flex;
+        }
+
+        .lightbox-panel {
+            background: var(--bg-dark-panel);
+            border: 1px solid var(--border-dark);
+            border-radius: var(--radius-md);
+            width: 90vw;
+            height: 88vh;
+            max-width: 1400px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .lightbox-top {
+            padding: 12px 20px;
+            background: #0F172A;
+            border-bottom: 1px solid var(--border-dark);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            color: #FFFFFF;
+        }
+
+        .lightbox-view {
             flex: 1;
-            background: var(--color-bg-secondary);
-            border: 1px solid var(--color-border-light);
-            border-radius: var(--border-radius-sm);
-            padding: 6px 10px;
-            color: var(--color-text-primary);
-            font-size: 13px;
-            transition: var(--transition-default);
-        }
-
-        .set-row input:focus,
-        .set-row select:focus {
-            outline: none;
-            border-color: var(--color-info);
-        }
-
-        .set-row input[type=range] {
-            flex: 2;
-            min-width: 100px;
-        }
-
-        /* ========== 状态栏 ========== */
-        .status-bar {
             display: flex;
             align-items: center;
-            gap: var(--spacing-md);
-            background: var(--color-bg-secondary);
-            border-radius: var(--border-radius-lg);
-            padding: var(--spacing-sm) var(--spacing-lg);
-            border: 1px solid var(--color-border);
-            font-size: 12px;
-            flex-wrap: wrap;
+            justify-content: center;
+            overflow: auto;
+            background: #020617;
+            padding: 20px;
         }
 
-        .status-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            background: var(--color-success);
-            animation: pulse 2s infinite;
+        .lightbox-view img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            transition: transform 0.2s ease;
         }
 
-        @keyframes pulse {
-            0%, 100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.4;
-            }
+        /* 页脚状态 */
+        .footer-hud {
+            background: var(--bg-card);
+            border-top: 1px solid var(--border-color);
+            padding: 8px 24px;
+            font-size: 11px;
+            font-family: var(--font-mono);
+            color: var(--text-secondary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+        /* 响应式断点 */
+        @media (max-width: 1024px) {
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .stream-grid { grid-template-columns: 1fr; }
+            .partition-grid { grid-template-columns: 1fr; }
+            .control-grid { grid-template-columns: 1fr; }
         }
-
-        .status-bar span {
-            color: var(--color-text-secondary);
-        }
-
-        /* ========== 响应式适配 ========== */
-        @media (max-width: 768px) {
-            .sidebar {
-                width: 60px;
-                padding: var(--spacing-md) 0;
-            }
-
-            .sidebar .logo h2 span,
-            .sidebar .logo p,
-            .sidebar nav a span:not(.dot) {
-                display: none;
-            }
-
-            .sidebar nav a {
-                justify-content: center;
-                padding: var(--spacing-sm);
-            }
-
-            .main {
-                padding: var(--spacing-sm);
-            }
-
-            .status-bar {
-                gap: var(--spacing-xs);
-                row-gap: var(--spacing-sm);
-            }
-
-            .status-bar span {
-                white-space: nowrap;
-            }
-
-            .stream-row {
-                grid-template-columns: 1fr;
-            }
-
-            .status-bar span:not(:first-child):not(:nth-child(2)) {
-                order: 1;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .cards {
-                grid-template-columns: 1fr;
-            }
-
-            .btn-row {
-                flex-direction: column;
-                gap: var(--spacing-sm);
-            }
-
-            .btn {
-                width: 100%;
-                justify-content: center;
-            }
+        @media (max-width: 640px) {
+            .kpi-grid { grid-template-columns: 1fr; }
+            .weather-btn-group { grid-template-columns: repeat(2, 1fr); }
         }
     </style>
 </head>
 <body>
-    <!-- 侧边栏 -->
-    <aside class="sidebar">
-        <div class="logo">
-            <h2>☀️ <span>光伏板监测系统</span></h2>
-            <p>ESP32-S3 Edge AI</p>
-        </div>
-        <nav>
-            <a href="#" class="active"><span class="dot green"></span>运行概览</a>
-            <a href="#"><span class="dot blue"></span>历史数据</a>
-            <a href="#"><span class="dot orange"></span>系统设置</a>
-        </nav>
-    </aside>
 
-    <!-- 主内容区 -->
-    <main class="main">
-        <h1>📊 运行概览</h1>
-
-        <!-- KPI卡片 -->
-        <div class="cards">
-            <div class="card">
-                <div class="label">发电功率</div>
-                <div class="value" id="power">2.38</div>
-                <div class="unit">kW</div>
-                <div class="trend up">↑ 3.2%</div>
+    <!-- 顶部控制与状态导航栏 -->
+    <header class="top-navbar">
+        <div class="brand-logo">
+            <div class="brand-icon">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                    <line x1="8" y1="21" x2="16" y2="21"></line>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                </svg>
             </div>
-            <div class="card">
-                <div class="label">光照强度</div>
-                <div class="value" id="lux">52.3</div>
-                <div class="unit">klux</div>
-                <div class="trend down">↓ 1.5%</div>
-            </div>
-            <div class="card">
-                <div class="label">温度 / 湿度</div>
-                <div class="value" id="temp">32.5°C</div>
-                <div class="unit" id="humidity">68% RH</div>
-            </div>
-            <div class="card">
-                <div class="label">脏污程度</div>
-                <div class="value" id="dirtScore" style="color:var(--color-warning)">42%</div>
-                <div class="unit">中度污染</div>
+            <div class="brand-title">
+                <h1>ESP32-S3 光伏板脏污识别智能监控系统</h1>
+                <p>PV Inspection &amp; Automated Cleaning Control Center</p>
             </div>
         </div>
 
-        <!-- 图表区域 -->
-        <div class="charts">
-            <div class="chart-box">
-                <h3>📈 发电功率 & 光照强度</h3>
-                <canvas id="chartPower"></canvas>
+        <div class="sys-status-group">
+            <!-- 工作模式切换 -->
+            <div class="mode-selector">
+                <button class="mode-btn active" id="modeBtnESP32" onclick="setInferenceMode('esp32')">ESP32 端侧模式</button>
+                <button class="mode-btn" id="modeBtnPC" onclick="setInferenceMode('pc')">PC 边缘模式</button>
             </div>
-            <div class="chart-box">
-                <h3>🌡️ 温度 & 湿度趋势</h3>
-                <canvas id="chartEnv"></canvas>
+
+            <div class="status-badge online" id="sysStatusBadge">
+                <span class="status-dot"></span>
+                <span id="sysStatusText">ESP32 在线</span>
+            </div>
+
+            <div class="status-badge" id="mqttBadge">
+                <span id="mqttStatusText">MQTT: 连接中</span>
             </div>
         </div>
+    </header>
 
-        <!-- 视频流 & 检测结果 -->
-        <div class="stream-row">
-            <div class="stream-box">
-                <h3>📷 实时画面</h3>
-                <div class="stream-wrap">
-                    <img src="/stream" alt="Live Stream" />
+    <!-- 主界面布局 -->
+    <main class="main-container">
+
+        <!-- 1. 顶部 4 KPI 核心数据指标 -->
+        <section class="kpi-grid">
+            <!-- 温湿度卡片 -->
+            <div class="kpi-card">
+                <div class="kpi-label">
+                    <span>环境温度 / 湿度 (DHT11)</span>
+                    <span class="partition-tag tag-real">真实传感器</span>
                 </div>
-                <div class="stream-overlay">
-                    <span id="streamStatus">● LIVE</span>
-                    <span id="streamFPS">MJPEG</span>
+                <div class="kpi-value-wrap">
+                    <span class="kpi-value" id="kpiTemp">--.-</span>
+                    <span class="kpi-unit">°C</span>
+                    <span style="margin: 0 4px; color: var(--border-color);">|</span>
+                    <span class="kpi-value" id="kpiHumi">--.-</span>
+                    <span class="kpi-unit">% RH</span>
+                </div>
+                <div class="kpi-footer">
+                    <span>GPIO 38 (单总线)</span>
+                    <span id="dht11State">正常采样</span>
                 </div>
             </div>
-            <div class="stream-side">
-                <div class="stream-box">
-                    <h3>🤖 AI 推理结果</h3>
-                    <div class="stream-wrap">
-                        <img id="annotImg" src="" alt="Detection Result" />
+
+            <!-- 电流电压卡片 -->
+            <div class="kpi-card">
+                <div class="kpi-label">
+                    <span>采样电流 / 电压 (MAX471)</span>
+                    <span class="partition-tag tag-real">真实传感器</span>
+                </div>
+                <div class="kpi-value-wrap">
+                    <span class="kpi-value" id="kpiCurrent">0.0</span>
+                    <span class="kpi-unit">mA</span>
+                    <span style="margin: 0 4px; color: var(--border-color);">|</span>
+                    <span class="kpi-value" id="kpiVoltage">0.00</span>
+                    <span class="kpi-unit">V</span>
+                </div>
+                <div class="kpi-footer">
+                    <span>GPIO 1 (ADC1_CH0)</span>
+                    <span id="max471State">高侧采样</span>
+                </div>
+            </div>
+
+            <!-- 执行器状态卡片 -->
+            <div class="kpi-card">
+                <div class="kpi-label">
+                    <span>硬件执行器 (LED 替代)</span>
+                    <span class="partition-tag tag-real">板载硬件</span>
+                </div>
+                <div class="kpi-value-wrap">
+                    <div style="font-size:13px; line-height:1.4;">
+                        <div>LED1 (水泵): <strong id="led1Status" style="color:var(--state-success)">常亮 (待机)</strong></div>
+                        <div>LED2 (毛刷): <strong id="led2Status" style="color:var(--state-success)">常亮 (待机)</strong></div>
                     </div>
-                    <div class="stream-overlay">
-                        <span id="annotStatus">⏳ 等待推理...</span>
-                        <span id="annotTime">--</span>
+                </div>
+                <div class="kpi-footer">
+                    <span>高电平有效</span>
+                    <span>清洁周期: 500ms闪烁</span>
+                </div>
+            </div>
+
+            <!-- 系统决策状态卡片 -->
+            <div class="kpi-card">
+                <div class="kpi-label">
+                    <span>系统综合决策</span>
+                    <span class="partition-tag tag-real">规则引擎</span>
+                </div>
+                <div class="kpi-value-wrap">
+                    <span class="kpi-value" id="kpiDecision" style="font-size:20px; color:var(--brand-primary)">待机运行</span>
+                </div>
+                <div class="kpi-footer">
+                    <span>当前触发动作</span>
+                    <span id="kpiActionDesc">未触发清洁</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. 视频与推理双画面 (1:1 严格对称) -->
+        <section class="stream-grid">
+            <!-- 左栏：摄像头原始画面 -->
+            <div class="card-panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                            <circle cx="12" cy="13" r="4"></circle>
+                        </svg>
+                        <span>实时摄像头采集画面 (OV5640)</span>
+                    </div>
+                    <div class="panel-subtitle" id="rawResInfo">HTTP /stream (320x320)</div>
+                </div>
+                <div class="panel-body">
+                    <div class="video-wrapper" onclick="openLightbox('/stream', '实时摄像头采集画面')">
+                        <img id="rawStreamImg" src="/stream" alt="Camera Stream" />
+                        <div class="video-hint">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            点击放大全屏查看
+                        </div>
+                    </div>
+                    <div class="stream-meta">
+                        <span>状态: <strong style="color:var(--state-success)">● 实时传输</strong></span>
+                        <span>分辨率: <span id="valRawRes">320×320</span></span>
                     </div>
                 </div>
             </div>
-        </div>
 
-        <!-- 远程控制 -->
-        <div class="controls">
-            <h3>🎮 远程控制</h3>
-            <div class="btn-row">
-                <button class="btn btn-start" onclick="sendCmd('clean_start')">🧹 开始清洁</button>
-                <button class="btn btn-stop" onclick="sendCmd('stop')">⏹️ 停止机器</button>
-                <button class="btn btn-setting" onclick="toggleSettings()">⚙️ 参数设置</button>
+            <!-- 右栏：AI 推理与目标标注画面 -->
+            <div class="card-panel">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+                            <polyline points="2 17 12 22 22 17"></polyline>
+                            <polyline points="2 12 12 17 22 12"></polyline>
+                        </svg>
+                        <span>AI 推理与目标标注结果</span>
+                    </div>
+                    <div class="panel-subtitle" id="inferModelInfo">YOLO11 INT8 (ESP32 端侧)</div>
+                </div>
+                <div class="panel-body">
+                    <div class="video-wrapper" onclick="openLightbox(dom.annotImg.src, 'AI 推理与目标标注结果')">
+                        <img id="annotImg" src="" alt="Detection Output" />
+                        <div class="video-hint">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                            点击放大标框细节
+                        </div>
+                    </div>
+                    <div class="stream-meta">
+                        <span>推理延迟: <strong id="valInferLatency" style="color:var(--brand-primary)">-- ms</strong></span>
+                        <span>绘制帧率: <span id="valInferFPS">-- FPS</span></span>
+                    </div>
+                </div>
             </div>
-            <div class="settings" id="settingsPanel">
-                <div class="set-row">
-                    <label>清洁模式</label>
-                    <select id="cleanMode">
-                        <option>自动清洁</option>
-                        <option>手动清洁</option>
-                        <option>定时清洁</option>
-                    </select>
-                </div>
-                <div class="set-row">
-                    <label>脏污阈值</label>
-                    <input type="range" min="10" max="90" value="40" id="dirtThr">
-                    <span id="dirtThrVal">40%</span>
-                </div>
-                <div class="set-row">
-                    <label>清洁时长</label>
-                    <input type="number" value="30" id="cleanDuration" min="5" max="300" style="width:80px"> 秒
-                </div>
-                <div class="set-row">
-                    <label>喷淋水压</label>
-                    <select id="waterPressure">
-                        <option>低压</option>
-                        <option selected>中压</option>
-                        <option>高压</option>
-                    </select>
-                </div>
-                <button class="btn btn-start" onclick="saveSettings()">💾 保存设置</button>
-            </div>
-        </div>
+        </section>
 
-        <!-- 状态栏 -->
-        <div class="status-bar">
-            <div class="status-dot"></div>
-            <span>系统运行中</span>
-            <span>|</span>
-            <span>设备: ESP32-S3</span>
-            <span>|</span>
-            <span>IP: <span id="devIP">--</span></span>
-            <span>|</span>
-            <span>最后更新: <span id="lastUpdate">--</span></span>
-            <span>|</span>
-            <span>推理耗时: 4.6s</span>
-            <span>|</span>
-            <span>MQTT: 已连接</span>
-        </div>
+        <!-- 3. 双分区：真实物理传感器 vs 模拟天气与决策 (核心区分) -->
+        <section class="partition-grid">
+            <!-- 分区 A：真实物理传感器数据与历史曲线 -->
+            <div class="partition-card">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="18" y1="20" x2="18" y2="10"></line>
+                            <line x1="12" y1="20" x2="12" y2="4"></line>
+                            <line x1="6" y1="20" x2="6" y2="14"></line>
+                        </svg>
+                        <span>分区 A：真实物理传感器监控</span>
+                    </div>
+                    <span class="partition-tag tag-real">真实数据 REAL</span>
+                </div>
+                <div class="panel-body">
+                    <div class="telemetry-row">
+                        <div class="telemetry-item">
+                            <div class="telemetry-title">DHT11 环境温度</div>
+                            <div class="telemetry-num" id="subTemp">-- °C</div>
+                        </div>
+                        <div class="telemetry-item">
+                            <div class="telemetry-title">DHT11 环境湿度</div>
+                            <div class="telemetry-num" id="subHumi">-- %</div>
+                        </div>
+                        <div class="telemetry-item">
+                            <div class="telemetry-title">MAX471 采样电流</div>
+                            <div class="telemetry-num" id="subCurrent">0.0 mA</div>
+                        </div>
+                        <div class="telemetry-item">
+                            <div class="telemetry-title">MAX471 采样电压</div>
+                            <div class="telemetry-num" id="subVoltage">0.00 V</div>
+                        </div>
+                    </div>
+
+                    <!-- 真实温湿度历史折线图 -->
+                    <div style="height: 160px; position: relative;">
+                        <canvas id="chartRealEnv"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 分区 B：模拟天气场景与规则决策矩阵 -->
+            <div class="partition-card">
+                <div class="panel-header">
+                    <div class="panel-title">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M175 190a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9z"></path>
+                            <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+                        </svg>
+                        <span>分区 B：虚拟天气场景控制与决策</span>
+                    </div>
+                    <span class="partition-tag tag-simulated">模拟数据 SIMULATED</span>
+                </div>
+                <div class="panel-body">
+                    <div style="font-size:12px; color:var(--text-secondary); margin-bottom:10px;">
+                        选择模拟天气（用于测试雨天暂停清洁与决策引擎响应）：
+                    </div>
+                    
+                    <!-- 天气选择器按钮组 -->
+                    <div class="weather-btn-group">
+                        <button class="weather-btn active" id="wBtnClear" onclick="setWeather('clear')">
+                            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"></circle><line x1="12" y1="1" x2="12" y2="3"></line><line x1="12" y1="21" x2="12" y2="23"></line><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line><line x1="1" y1="12" x2="3" y2="12"></line><line x1="21" y1="12" x2="23" y2="12"></line><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line></svg>
+                            <span class="weather-btn-title">晴天 Clear</span>
+                        </button>
+                        <button class="weather-btn" id="wBtnOvercast" onclick="setWeather('cloudy')">
+                            <svg viewBox="0 0 24 24"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"></path></svg>
+                            <span class="weather-btn-title">阴天 Cloudy</span>
+                        </button>
+                        <button class="weather-btn" id="wBtnRain" onclick="setWeather('rain')">
+                            <svg viewBox="0 0 24 24"><line x1="16" y1="13" x2="16" y2="21"></line><line x1="8" y1="13" x2="8" y2="21"></line><line x1="12" y1="15" x2="12" y2="23"></line><path d="M20 16.58A5 5 0 0 0 18 7h-1.26A8 8 0 1 0 4 15.25"></path></svg>
+                            <span class="weather-btn-title">雨天 Rain</span>
+                        </button>
+                        <button class="weather-btn" id="wBtnSnow" onclick="setWeather('snow')">
+                            <svg viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="22"></line><line x1="2" y1="12" x2="22" y2="12"></line><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line><line x1="4.93" y1="19.07" x2="19.07" y2="4.93"></line></svg>
+                            <span class="weather-btn-title">雪天 Snow</span>
+                        </button>
+                    </div>
+
+                    <!-- 确定性规则响应矩阵 -->
+                    <div class="rule-matrix">
+                        <div class="rule-row">
+                            <span class="rule-label">1. 损伤阻断逻辑 (Damage Rule):</span>
+                            <span class="rule-val" id="ruleValDamage" style="color:var(--state-success)">未检出损伤 (允许)</span>
+                        </div>
+                        <div class="rule-row">
+                            <span class="rule-label">2. 雨雪暂停逻辑 (Rain/Snow Rule):</span>
+                            <span class="rule-val" id="ruleValWeather" style="color:var(--state-success)">正常天气 (允许)</span>
+                        </div>
+                        <div class="rule-row">
+                            <span class="rule-label">3. 污渍触发逻辑 (Stain Clean Rule):</span>
+                            <span class="rule-val" id="ruleValStain">检查识别框...</span>
+                        </div>
+                        <div class="rule-row">
+                            <span class="rule-label">4. 当前下发执行状态:</span>
+                            <span class="rule-val" id="ruleValExec" style="color:var(--brand-primary)">待机 (LED 常亮)</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. 控制面板与运维指令 -->
+        <section class="card-panel">
+            <div class="panel-header">
+                <div class="panel-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="4" width="20" height="16" rx="2"></rect>
+                        <path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M6 16h12"></path>
+                    </svg>
+                    <span>设备手动运维与参数控制面板</span>
+                </div>
+            </div>
+            <div class="panel-body">
+                <div class="btn-group">
+                    <button class="btn btn-primary" onclick="triggerManualClean()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        启动模拟清洁 (LED闪烁)
+                    </button>
+                    <button class="btn btn-danger" onclick="stopClean()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="6" width="12" height="12"></rect></svg>
+                        紧急停止清洁
+                    </button>
+                    <button class="btn btn-outline" onclick="resetDamageLock()">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                        复位损伤锁定
+                    </button>
+                </div>
+            </div>
+        </section>
+
     </main>
 
+    <!-- 页脚状态 HUD -->
+    <footer class="footer-hud">
+        <div>
+            <span>MCU: ESP32-S3-N16R8</span> |
+            <span>IDF Version: v5.4.2</span> |
+            <span>IP: <span id="valHostIP">--</span></span>
+        </div>
+        <div>
+            <span>最后更新时间: <span id="valLastTime">--</span></span>
+        </div>
+    </footer>
+
+    <!-- 5. 损伤弹窗警告 Modal -->
+    <div class="modal-backdrop" id="damageModal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                        <line x1="12" y1="9" x2="12" y2="13"></line>
+                        <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                    </svg>
+                    警告：检测到光伏板结构 / 电气损伤！
+                </h3>
+                <button style="background:none; border:none; color:currentColor; cursor:pointer; font-size:16px;" onclick="closeDamageModal()">✕</button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom:8px;"><strong>告警详情：</strong> 模型推理识别到光伏板表面存在物理破损或电气损伤（Damage / Crack）。</p>
+                <p style="color:var(--state-danger); font-weight:600;">系统已自动触发安全防护保护：禁止开启水泵与毛刷清洁，以防引发短路或二次损坏。</p>
+                <p style="font-size:11px; color:var(--text-secondary); margin-top:10px;">注：关闭本窗口不会解除系统内部的损伤锁定状态。若确认现场安全，请在运维面板点击“复位损伤锁定”。</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeDamageModal()">关闭提示窗口</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 6. 图像全屏放大 Lightbox Modal -->
+    <div class="lightbox-backdrop" id="lightboxModal" onclick="closeLightbox(event)">
+        <div class="lightbox-panel">
+            <div class="lightbox-top">
+                <span id="lightboxTitle" style="font-weight:600; font-size:14px;">图像放大分析</span>
+                <div>
+                    <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; color:#fff;" onclick="zoomLightbox(0.5)">放大</button>
+                    <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; color:#fff;" onclick="zoomLightbox(-0.5)">缩小</button>
+                    <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; color:#fff;" onclick="resetLightboxZoom()">1:1 重置</button>
+                    <button class="btn btn-outline" style="padding:4px 8px; font-size:11px; color:#fff;" onclick="closeLightbox(event, true)">关闭 ✕</button>
+                </div>
+            </div>
+            <div class="lightbox-view">
+                <img id="lightboxImg" src="" alt="Zoom View" />
+            </div>
+        </div>
+    </div>
+
+    <!-- 交互与数据通信脚本 -->
     <script>
-        // ========== 常量定义 ==========
-        const CONFIG = {
-            refreshInterval: 3000, // 数据刷新间隔(ms)
-            chartColor: {
-                power: '#3b82f6',
-                lux: '#f59e0b',
-                temp: '#ef4444',
-                humidity: '#06b6d4',
-                success: '#22c55e',
-                warning: '#f59e0b',
-                danger: '#ef4444'
-            },
-            dataRange: {
-                power: [1.8, 2.8],
-                lux: [30, 70],
-                temp: [25, 40],
-                humidity: [40, 85],
-                dirt: [15, 60]
-            }
+        // ========== 全局状态系统 ==========
+        const state = {
+            inferenceMode: 'esp32', // 'esp32' (2类) 或 'pc' (5类)
+            simulatedWeather: 'clear', // 'clear', 'cloudy', 'rain', 'snow'
+            sensorData: { temp: null, humi: null, ok: false, current_ma: 0, voltage_v: 0 },
+            stainDetected: false,
+            damageDetected: false,
+            damageLocked: false,
+            cleaningActive: false,
+            lightboxScale: 1.0
         };
 
-        // ========== 工具函数 ==========
-        /**
-         * 生成指定范围的随机数
-         * @param {number} min 最小值
-         * @param {number} max 最大值
-         * @param {number} decimal 小数位数
-         * @returns {number} 随机数
-         */
-        function randomNum(min, max, decimal = 1) {
-            const num = min + Math.random() * (max - min);
-            return Number(num.toFixed(decimal));
-        }
-
-        /**
-         * 获取当前时间戳(格式化)
-         * @returns {string} 格式化时间
-         */
-        function getCurrentTime() {
-            return new Date().toLocaleTimeString('zh-CN', { hour12: false });
-        }
-
-        // ========== DOM 元素缓存 ==========
+        // DOM 缓存
         const dom = {
-            power: document.getElementById('power'),
-            lux: document.getElementById('lux'),
-            temp: document.getElementById('temp'),
-            humidity: document.getElementById('humidity'),
-            dirtScore: document.getElementById('dirtScore'),
-            dirtGauge: document.getElementById('dirtGauge'),
-            dirtDesc: document.getElementById('dirtDesc'),
-            devIP: document.getElementById('devIP'),
-            lastUpdate: document.getElementById('lastUpdate'),
-            dirtThr: document.getElementById('dirtThr'),
-            dirtThrVal: document.getElementById('dirtThrVal'),
-            settingsPanel: document.getElementById('settingsPanel'),
+            kpiTemp: document.getElementById('kpiTemp'),
+            kpiHumi: document.getElementById('kpiHumi'),
+            kpiCurrent: document.getElementById('kpiCurrent'),
+            kpiVoltage: document.getElementById('kpiVoltage'),
+            subTemp: document.getElementById('subTemp'),
+            subHumi: document.getElementById('subHumi'),
+            subCurrent: document.getElementById('subCurrent'),
+            subVoltage: document.getElementById('subVoltage'),
+            led1Status: document.getElementById('led1Status'),
+            led2Status: document.getElementById('led2Status'),
+            kpiDecision: document.getElementById('kpiDecision'),
+            kpiActionDesc: document.getElementById('kpiActionDesc'),
+            ruleValDamage: document.getElementById('ruleValDamage'),
+            ruleValWeather: document.getElementById('ruleValWeather'),
+            ruleValStain: document.getElementById('ruleValStain'),
+            ruleValExec: document.getElementById('ruleValExec'),
             annotImg: document.getElementById('annotImg'),
-            annotTime: document.getElementById('annotTime'),
-            chartPower: document.getElementById('chartPower'),
-            chartEnv: document.getElementById('chartEnv')
+            rawStreamImg: document.getElementById('rawStreamImg'),
+            valInferLatency: document.getElementById('valInferLatency'),
+            valInferFPS: document.getElementById('valInferFPS'),
+            valHostIP: document.getElementById('valHostIP'),
+            valLastTime: document.getElementById('valLastTime'),
+            inferModelInfo: document.getElementById('inferModelInfo'),
+            modeBtnESP32: document.getElementById('modeBtnESP32'),
+            modeBtnPC: document.getElementById('modeBtnPC'),
+            damageModal: document.getElementById('damageModal'),
+            lightboxModal: document.getElementById('lightboxModal'),
+            lightboxImg: document.getElementById('lightboxImg'),
+            lightboxTitle: document.getElementById('lightboxTitle')
         };
 
-        // ========== 图表初始化 ==========
-        // 生成时间标签(20个)
-        let timeLabels = Array.from({ length: 20 }, (_, i) => {
-            return new Date(Date.now() - (19 - i) * CONFIG.refreshInterval)
-                .toLocaleTimeString('zh-CN', { hour12: false });
-        });
+        // ========== 初始化 Chart.js 折线图 ==========
+        let chartLabels = Array.from({ length: 15 }, (_, i) => '');
+        let chartTempData = Array(15).fill(null);
+        let chartHumiData = Array(15).fill(null);
 
-        // 发电功率&光照强度图表
-        const chartPower = new Chart(dom.chartPower, {
+        const ctxEnv = document.getElementById('chartRealEnv').getContext('2d');
+        const chartRealEnv = new Chart(ctxEnv, {
             type: 'line',
             data: {
-                labels: timeLabels,
+                labels: chartLabels,
                 datasets: [
                     {
-                        label: '功率(kW)',
-                        borderColor: CONFIG.chartColor.power,
-                        data: Array(20).fill(0).map(() => randomNum(...CONFIG.dataRange.power, 2)),
-                        tension: 0.3,
-                        fill: false,
+                        label: '温度 (°C)',
+                        borderColor: '#245C8D',
+                        borderWidth: 2,
+                        data: chartTempData,
+                        tension: 0.2,
                         pointRadius: 0
                     },
                     {
-                        label: '光照(klux)',
-                        borderColor: CONFIG.chartColor.lux,
-                        data: Array(20).fill(0).map(() => randomNum(...CONFIG.dataRange.lux, 1)),
-                        tension: 0.3,
-                        fill: false,
-                        pointRadius: 0,
-                        yAxisID: 'y1'
+                        label: '湿度 (% RH)',
+                        borderColor: '#0284C7',
+                        borderWidth: 2,
+                        borderDash: [4, 4],
+                        data: chartHumiData,
+                        tension: 0.2,
+                        pointRadius: 0
                     }
                 ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
-                plugins: {
-                    legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
-                    tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                        borderColor: '#1e293b',
-                        borderWidth: 1,
-                        padding: 8,
-                        titleFont: { size: 12 },
-                        bodyFont: { size: 11 }
-                    }
-                },
+                plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
                 scales: {
-                    x: { ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 8 } },
-                    y: {
-                        type: 'linear',
-                        position: 'left',
-                        title: { display: true, text: 'kW', color: CONFIG.chartColor.power },
-                        ticks: { color: '#64748b' }
-                    },
-                    y1: {
-                        type: 'linear',
-                        position: 'right',
-                        title: { display: true, text: 'klux', color: CONFIG.chartColor.lux },
-                        ticks: { color: '#64748b' },
-                        grid: { drawOnChartArea: false }
-                    }
+                    x: { display: false },
+                    y: { ticks: { font: { size: 10 } }, grid: { color: '#E2E8F0' } }
                 },
-                animation: false // 关闭动画提升性能
+                animation: false
             }
         });
 
-        // 温度&湿度图表
-        const chartEnv = new Chart(dom.chartEnv, {
-            type: 'line',
-            data: {
-                labels: timeLabels,
-                datasets: [
-                    {
-                        label: '温度(°C)',
-                        borderColor: CONFIG.chartColor.temp,
-                        data: Array(20).fill(0).map(() => randomNum(...CONFIG.dataRange.temp, 1)),
-                        tension: 0.3,
-                        fill: false,
-                        pointRadius: 0
-                    },
-                    {
-                        label: '湿度(%)',
-                        borderColor: CONFIG.chartColor.humidity,
-                        data: Array(20).fill(0).map(() => randomNum(...CONFIG.dataRange.humidity, 0)),
-                        tension: 0.3,
-                        fill: false,
-                        pointRadius: 0,
-                        yAxisID: 'y1'
-                    }
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                plugins: {
-                    legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
-                    tooltip: {
-                        backgroundColor: 'rgba(15, 23, 42, 0.9)',
-                        borderColor: '#1e293b',
-                        borderWidth: 1,
-                        padding: 8,
-                        titleFont: { size: 12 },
-                        bodyFont: { size: 11 }
-                    }
-                },
-                scales: {
-                    x: { ticks: { color: '#64748b', font: { size: 10 }, maxTicksLimit: 8 } },
-                    y: {
-                        type: 'linear',
-                        position: 'left',
-                        title: { display: true, text: '°C', color: CONFIG.chartColor.temp },
-                        ticks: { color: '#64748b' }
-                    },
-                    y1: {
-                        type: 'linear',
-                        position: 'right',
-                        title: { display: true, text: '%', color: CONFIG.chartColor.humidity },
-                        ticks: { color: '#64748b' },
-                        grid: { drawOnChartArea: false },
-                        min: 0,
-                        max: 100
-                    }
-                },
-                animation: false // 关闭动画提升性能
+        // ========== 数据拉取逻辑 ==========
+        function fetchSensors() {
+            fetch('/api/sensors', { cache: 'no-store' })
+                .then(r => r.json())
+                .then(data => {
+                    state.sensorData = data;
+                    updateSensorUI();
+                })
+                .catch(() => {
+                    state.sensorData = { temp: null, humi: null, ok: false, current_ma: 0, voltage_v: 0 };
+                    updateSensorUI();
+                });
+        }
+
+        function updateSensorUI() {
+            const d = state.sensorData;
+            const valid = d && d.ok && Number.isFinite(d.temp);
+
+            const tempStr = valid ? d.temp.toFixed(1) : '--.-';
+            const humiStr = valid ? d.humi.toFixed(1) : '--.-';
+            const currStr = (d && Number.isFinite(d.current_ma)) ? d.current_ma.toFixed(1) : '0.0';
+            const voltStr = (d && Number.isFinite(d.voltage_v)) ? d.voltage_v.toFixed(2) : '0.00';
+
+            dom.kpiTemp.textContent = tempStr;
+            dom.kpiHumi.textContent = humiStr;
+            dom.subTemp.textContent = `${tempStr} °C`;
+            dom.subHumi.textContent = `${humiStr} %`;
+
+            dom.kpiCurrent.textContent = currStr;
+            dom.kpiVoltage.textContent = voltStr;
+            dom.subCurrent.textContent = `${currStr} mA`;
+            dom.subVoltage.textContent = `${voltStr} V`;
+
+            // 更新折线图
+            const nowTime = new Date().toLocaleTimeString('zh-CN', { hour12: false });
+            chartLabels.push(nowTime);
+            chartLabels.shift();
+            chartTempData.push(valid ? d.temp : null);
+            chartTempData.shift();
+            chartHumiData.push(valid ? d.humi : null);
+            chartHumiData.shift();
+            chartRealEnv.update('none');
+
+            dom.valLastTime.textContent = nowTime;
+        }
+
+        // ========== 规则引擎评估 (系统核心逻辑) ==========
+        function evaluateRules() {
+            // 1. 损伤判断
+            if (state.damageDetected && !state.damageLocked) {
+                state.damageLocked = true;
+                openDamageModal();
             }
-        });
 
-        // ========== 初始化逻辑 ==========
-        function init() {
-            // 设置设备IP
-            const host = window.location.hostname || '127.0.0.1';
-            dom.devIP.textContent = host;
+            if (state.damageLocked) {
+                dom.ruleValDamage.textContent = '阻断: 物理/电气损伤';
+                dom.ruleValDamage.style.color = 'var(--state-danger)';
+            } else {
+                dom.ruleValDamage.textContent = '正常: 未检测到损伤';
+                dom.ruleValDamage.style.color = 'var(--state-success)';
+            }
 
-            // 推理结果图自动刷新
-            const annotUrl = `http://${host}:8080/annotated`;
-            dom.annotImg.src = annotUrl;
-            setInterval(() => {
-                dom.annotImg.src = `${annotUrl}?t=${Date.now()}`;
-                dom.annotTime.textContent = new Date().toLocaleTimeString('zh-CN', { hour12: false });
-            }, 2000);
+            // 2. 雨雪天气判断
+            if (state.simulatedWeather === 'rain') {
+                dom.ruleValWeather.textContent = '暂停: 雨天自动防洗';
+                dom.ruleValWeather.style.color = 'var(--state-warning)';
+            } else if (state.simulatedWeather === 'snow') {
+                dom.ruleValWeather.textContent = '暂停: 积雪状态';
+                dom.ruleValWeather.style.color = 'var(--state-warning)';
+            } else {
+                dom.ruleValWeather.textContent = '允许: 晴朗/阴天';
+                dom.ruleValWeather.style.color = 'var(--state-success)';
+            }
 
-            // 绑定脏污阈值滑块事件
-            dom.dirtThr.addEventListener('input', () => {
-                dom.dirtThrVal.textContent = `${dom.dirtThr.value}%`;
+            // 3. 污渍触发
+            if (state.stainDetected) {
+                dom.ruleValStain.textContent = '检出污渍 (Stain Detected)';
+                dom.ruleValStain.style.color = 'var(--brand-primary)';
+            } else {
+                dom.ruleValStain.textContent = '表面干净 (Clean)';
+                dom.ruleValStain.style.color = 'var(--state-success)';
+            }
+
+            // 4. 综合决策输出
+            if (state.damageLocked) {
+                dom.kpiDecision.textContent = '损伤锁定';
+                dom.kpiDecision.style.color = 'var(--state-danger)';
+                dom.kpiActionDesc.textContent = '因损伤禁止清洁';
+                dom.ruleValExec.textContent = '禁止清洁 (LED 常亮)';
+                dom.ruleValExec.style.color = 'var(--state-danger)';
+                setLEDState('idle');
+            } else if (state.simulatedWeather === 'rain' || state.simulatedWeather === 'snow') {
+                dom.kpiDecision.textContent = '雨雪暂停';
+                dom.kpiDecision.style.color = 'var(--state-warning)';
+                dom.kpiActionDesc.textContent = '自动清洁已暂停';
+                dom.ruleValExec.textContent = '暂停中 (LED 常亮)';
+                dom.ruleValExec.style.color = 'var(--state-warning)';
+                setLEDState('idle');
+            } else if (state.cleaningActive || state.stainDetected) {
+                dom.kpiDecision.textContent = '正在清洁';
+                dom.kpiDecision.style.color = 'var(--state-success)';
+                dom.kpiActionDesc.textContent = 'LED1/LED2 500ms 慢闪';
+                dom.ruleValExec.textContent = '执行中 (LED 慢闪中)';
+                dom.ruleValExec.style.color = 'var(--state-success)';
+                setLEDState('flashing');
+            } else {
+                dom.kpiDecision.textContent = '待机正常';
+                dom.kpiDecision.style.color = 'var(--brand-primary)';
+                dom.kpiActionDesc.textContent = '表面无污渍';
+                dom.ruleValExec.textContent = '待机 (LED 常亮)';
+                dom.ruleValExec.style.color = 'var(--text-secondary)';
+                setLEDState('idle');
+            }
+        }
+
+        function setLEDState(mode) {
+            if (mode === 'flashing') {
+                dom.led1Status.textContent = '500ms 慢闪中 (水泵运行)';
+                dom.led1Status.style.color = 'var(--state-warning)';
+                dom.led2Status.textContent = '500ms 慢闪中 (毛刷运行)';
+                dom.led2Status.style.color = 'var(--state-warning)';
+            } else {
+                dom.led1Status.textContent = '常亮 (待机准备)';
+                dom.led1Status.style.color = 'var(--state-success)';
+                dom.led2Status.textContent = '常亮 (待机准备)';
+                dom.led2Status.style.color = 'var(--state-success)';
+            }
+        }
+
+        // ========== 模式与天气交互 ==========
+        function setInferenceMode(m) {
+            state.inferenceMode = m;
+            if (m === 'esp32') {
+                dom.modeBtnESP32.classList.add('active');
+                dom.modeBtnPC.classList.remove('active');
+                dom.inferModelInfo.textContent = 'YOLO11 INT8 (ESP32 端侧 2类)';
+                dom.valInferLatency.textContent = '420 ms';
+                dom.valInferFPS.textContent = '2.4 FPS';
+            } else {
+                dom.modeBtnPC.classList.add('active');
+                dom.modeBtnESP32.classList.remove('active');
+                dom.inferModelInfo.textContent = 'YOLO11 FP32 (PC 边缘 5类)';
+                dom.valInferLatency.textContent = '35 ms';
+                dom.valInferFPS.textContent = '15.0 FPS';
+            }
+            evaluateRules();
+        }
+
+        function setWeather(w) {
+            state.simulatedWeather = w;
+            ['wBtnClear', 'wBtnOvercast', 'wBtnRain', 'wBtnSnow'].forEach(id => {
+                document.getElementById(id).classList.remove('active');
             });
-            // 启动数据刷新
-            startDataRefresh();
+            if (w === 'clear') document.getElementById('wBtnClear').classList.add('active');
+            if (w === 'cloudy') document.getElementById('wBtnOvercast').classList.add('active');
+            if (w === 'rain') document.getElementById('wBtnRain').classList.add('active');
+            if (w === 'snow') document.getElementById('wBtnSnow').classList.add('active');
+            evaluateRules();
         }
 
-        // ========== 数据刷新逻辑 ==========
-        function startDataRefresh() {
-            setInterval(() => {
-                // 生成模拟数据
-                const power = randomNum(...CONFIG.dataRange.power, 2);
-                const lux = randomNum(...CONFIG.dataRange.lux, 1);
-                const temp = randomNum(...CONFIG.dataRange.temp, 1);
-                const humidity = randomNum(...CONFIG.dataRange.humidity, 0);
-                const dirt = Math.floor(randomNum(...CONFIG.dataRange.dirt, 0));
-
-                // 更新DOM数据(批量更新减少重绘)
-                dom.power.textContent = power;
-                dom.lux.textContent = lux;
-                dom.temp.textContent = `${temp}°C`;
-                dom.humidity.textContent = `${humidity}% RH`;
-                dom.dirtScore.textContent = `${dirt}%`;
-                dom.dirtGauge.innerHTML = `<span style="color:${dirt > 50 ? CONFIG.chartColor.danger : CONFIG.chartColor.warning}">${dirt}%</span>`;
-                dom.lastUpdate.textContent = getCurrentTime();
-
-                // 更新脏污描述
-                const dirtType = dirt > 50 ? ['鸟粪 ×3', '灰尘 ×2'] : ['鸟粪 ×2', '灰尘 ×1'];
-                dom.dirtDesc.textContent = `检测到 ${dirtType.join(', ')}`;
-
-                // 更新图表数据(优化：只更新最后一个数据点)
-                const currentTime = getCurrentTime();
-                timeLabels.push(currentTime);
-                timeLabels.shift();
-
-                // 功率&光照图表更新
-                chartPower.data.labels = timeLabels;
-                chartPower.data.datasets[0].data.push(power);
-                chartPower.data.datasets[0].data.shift();
-                chartPower.data.datasets[1].data.push(lux);
-                chartPower.data.datasets[1].data.shift();
-                chartPower.update('none'); // 无动画更新
-
-                // 温湿度图表更新
-                chartEnv.data.labels = timeLabels;
-                chartEnv.data.datasets[0].data.push(temp);
-                chartEnv.data.datasets[0].data.shift();
-                chartEnv.data.datasets[1].data.push(humidity);
-                chartEnv.data.datasets[1].data.shift();
-                chartEnv.update('none'); // 无动画更新
-
-            }, CONFIG.refreshInterval);
-        }
-
-        // ========== 交互函数 ==========
-        /**
-         * 发送控制命令
-         * @param {string} cmd 命令类型
-         */
-        function sendCmd(cmd) {
-            // 模拟命令发送(可替换为真实MQTT/API调用)
-            const cmdMap = {
-                'clean_start': '开始清洁',
-                'stop': '停止机器'
-            };
-            showToast(`📡 命令已发送: ${cmdMap[cmd] || cmd}`);
-        }
-
-        /**
-         * 切换设置面板显示/隐藏
-         */
-        function toggleSettings() {
-            dom.settingsPanel.classList.toggle('show');
-        }
-
-        /**
-         * 保存设置
-         */
-        function saveSettings() {
-            const settings = {
-                cleanMode: document.getElementById('cleanMode').value,
-                dirtThr: dom.dirtThr.value,
-                cleanDuration: document.getElementById('cleanDuration').value,
-                waterPressure: document.getElementById('waterPressure').value
-            };
-            // 验证输入
-            if (settings.cleanDuration < 5 || settings.cleanDuration > 300) {
-                showToast('⚠️ 清洁时长需在5-300秒之间', 'warning');
+        // ========== 手动运维指令 ==========
+        function triggerManualClean() {
+            if (state.damageLocked) {
+                alert('⚠️ 无法启动：当前系统处于光伏板损伤锁定状态！请先排除故障并复位锁定。');
                 return;
             }
-            // 模拟保存(可替换为真实API调用)
-            showToast(`⚙️ 设置已保存:\n模式: ${settings.cleanMode}\n阈值: ${settings.dirtThr}%\n时长: ${settings.cleanDuration}s\n水压: ${settings.waterPressure}`);
-            dom.settingsPanel.classList.remove('show');
+            if (state.simulatedWeather === 'rain') {
+                alert('⚠️ 无法启动：雨天状态自动暂停清洁。');
+                return;
+            }
+            state.cleaningActive = true;
+            evaluateRules();
+            setTimeout(() => {
+                state.cleaningActive = false;
+                evaluateRules();
+            }, 6000);
         }
 
-        /**
-         * 轻提示函数(增强交互反馈)
-         * @param {string} msg 提示信息
-         * @param {string} type 类型(success/warning/error)
-         */
-        function showToast(msg, type = 'success') {
-            // 创建toast元素
-            const toast = document.createElement('div');
-            const bgColor = {
-                success: '#22c55e',
-                warning: '#f59e0b',
-                error: '#ef4444'
-            };
-            toast.style.cssText = `
-                position: fixed;
-                top: 20px;
-                right: 20px;
-                background: ${bgColor[type]};
-                color: white;
-                padding: 10px 20px;
-                border-radius: 6px;
-                font-size: 13px;
-                z-index: 9999;
-                animation: fadeIn 0.3s ease, fadeOut 0.3s ease 2.7s;
-                max-width: 300px;
-                word-wrap: break-word;
-            `;
-            toast.textContent = msg;
-            document.body.appendChild(toast);
-            // 3秒后移除
-            setTimeout(() => toast.remove(), 3000);
+        function stopClean() {
+            state.cleaningActive = false;
+            evaluateRules();
         }
 
-        // ========== 启动应用 ==========
-        window.addEventListener('DOMContentLoaded', init);
+        function resetDamageLock() {
+            state.damageLocked = false;
+            state.damageDetected = false;
+            closeDamageModal();
+            evaluateRules();
+        }
 
-        // 暴露全局函数(供HTML调用)
-        window.sendCmd = sendCmd;
-        window.toggleSettings = toggleSettings;
-        window.saveSettings = saveSettings;
+        function openDamageModal() {
+            dom.damageModal.classList.add('show');
+        }
+
+        function closeDamageModal() {
+            dom.damageModal.classList.remove('show');
+        }
+
+        // ========== Lightbox 放大看框 ==========
+        function openLightbox(src, title) {
+            if (!src) return;
+            dom.lightboxImg.src = src;
+            dom.lightboxTitle.textContent = title || '图像放大分析';
+            state.lightboxScale = 1.0;
+            dom.lightboxImg.style.transform = 'scale(1.0)';
+            dom.lightboxModal.classList.add('show');
+        }
+
+        function closeLightbox(e, force = false) {
+            if (force || e.target === dom.lightboxModal) {
+                dom.lightboxModal.classList.remove('show');
+            }
+        }
+
+        function zoomLightbox(delta) {
+            state.lightboxScale = Math.max(0.8, Math.min(4.0, state.lightboxScale + delta));
+            dom.lightboxImg.style.transform = `scale(${state.lightboxScale})`;
+        }
+
+        function resetLightboxZoom() {
+            state.lightboxScale = 1.0;
+            dom.lightboxImg.style.transform = 'scale(1.0)';
+        }
+
+        // ========== 定时刷新与图像重载 ==========
+        function initApp() {
+            const host = window.location.hostname || '127.0.0.1';
+            dom.valHostIP.textContent = host;
+
+            // 定时拉取标注图像与真实传感器
+            const annotUrl = `http://${host}:8080/annotated`;
+            dom.annotImg.src = annotUrl;
+
+            setInterval(() => {
+                const tsUrl = `${annotUrl}?t=${Date.now()}`;
+                dom.annotImg.src = tsUrl;
+            }, 2000);
+
+            fetchSensors();
+            setInterval(fetchSensors, 3000);
+
+            // 规则评估轮询
+            setInterval(evaluateRules, 1000);
+        }
+
+        window.addEventListener('DOMContentLoaded', initApp);
     </script>
 </body>
 </html>

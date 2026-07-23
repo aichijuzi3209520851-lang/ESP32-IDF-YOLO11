@@ -444,6 +444,7 @@ static void draw_fill(uint8_t *buf, int w, int h,
     }
 }
 
+
 // 5x7 bitmap font (0-9, A-Z, a-z, .: %_-)
 static const uint8_t FONT5X7[95][7] = {
     {0x00,0x00,0x00,0x00,0x00}, // space
@@ -507,25 +508,31 @@ static const uint8_t FONT5X7[95][7] = {
     {0x1E,0x21,0x01,0x01,0x1E}, // Z
 };
 
-static void draw_char(uint8_t *buf, int w, int h, char c,
-                     int cx, int cy, uint8_t r, uint8_t g, uint8_t b) {
+static void draw_char_scaled(uint8_t *buf, int w, int h, char c,
+                             int cx, int cy, uint8_t r, uint8_t g, uint8_t b, int scale) {
     int idx = (c >= '0' && c <= '9') ? (c - '0' + 16)
             : (c >= 'A' && c <= 'Z') ? (c - 'A' + 33)
             : (c >= 'a' && c <= 'z') ? (c - 'a' + 59)
-            : (c == '.') ? 27 : (c == ':') ? 28 : (c == '%') ? 29 : -1;
-    if (idx < 0 || idx >= 60) return;
+            : (c == '.') ? 14 : (c == ':') ? 26 : (c == '%') ? 5 : -1;
+    if (idx < 0 || idx >= 95) return;
     for (int col = 0; col < 5; col++) {
         uint8_t bits = FONT5X7[idx][col];
         for (int row = 0; row < 7; row++) {
-            if (bits & (1 << row)) set_px(buf, w, h, cx+col, cy+row, r, g, b);
+            if (bits & (1 << row)) {
+                for (int sy = 0; sy < scale; sy++) {
+                    for (int sx = 0; sx < scale; sx++) {
+                        set_px(buf, w, h, cx + col * scale + sx, cy + row * scale + sy, r, g, b);
+                    }
+                }
+            }
         }
     }
 }
 
-static void draw_text(uint8_t *buf, int w, int h, const char *str,
-                      int x, int y, uint8_t r, uint8_t g, uint8_t b) {
+static void draw_text_scaled(uint8_t *buf, int w, int h, const char *str,
+                              int x, int y, uint8_t r, uint8_t g, uint8_t b, int scale) {
     for (int i = 0; str[i]; i++)
-        draw_char(buf, w, h, str[i], x + i*6, y, r, g, b);
+        draw_char_scaled(buf, w, h, str[i], x + i * 6 * scale, y, r, g, b, scale);
 }
 
 uint8_t* YOLODetector::annotate_jpeg(
@@ -548,6 +555,9 @@ uint8_t* YOLODetector::annotate_jpeg(
     }
     memcpy(buf, rgb888_data, rgb888_size);
 
+    int scale = (img_width >= 240) ? 2 : 1;
+    int line_thickness = (scale > 1) ? 3 : 2;
+
     for (size_t i = 0; i < results.size(); i++) {
         const detection_t &d = results[i];
         int color_idx = d.class_id % YOLO_NUM_CLASSES;
@@ -558,14 +568,13 @@ uint8_t* YOLODetector::annotate_jpeg(
 
         int x1 = d.x1, y1 = d.y1, x2 = d.x2, y2 = d.y2;
 
-        draw_rect(buf, img_width, img_height, x1, y1, x2, y2, cr, cg, cb, 2);
+        draw_rect(buf, img_width, img_height, x1, y1, x2, y2, cr, cg, cb, line_thickness);
 
         // label text: "cls 0.xx"
         char label[32];
-        int len = snprintf(label, sizeof(label), "%s %.2f",
-                          CLASS_NAMES[d.class_id], d.score);
-        int font_w = len * 6;
-        int font_h = 9;
+        snprintf(label, sizeof(label), "%s %.2f", CLASS_NAMES[d.class_id], d.score);
+        int font_w = strlen(label) * 6 * scale;
+        int font_h = 7 * scale + 4;
 
         // smart placement: prefer above box, fallback below
         int lx1 = x1, ly1 = y1 - font_h - 2;
@@ -575,8 +584,8 @@ uint8_t* YOLODetector::annotate_jpeg(
                    lx1, ly1, lx1 + font_w, ly1 + font_h,
                    cr, cg, cb);
 
-        draw_text(buf, img_width, img_height, label,
-                   lx1 + 2, ly1 + 1, 255, 255, 255); // white text on colored bg
+        draw_text_scaled(buf, img_width, img_height, label,
+                         lx1 + 2 * scale, ly1 + 2, 255, 255, 255, scale); // white text on colored bg
     }
 
     uint8_t *jpg_buf = NULL;

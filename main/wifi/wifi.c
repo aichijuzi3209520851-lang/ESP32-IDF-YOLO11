@@ -9,9 +9,12 @@
 #include "wifi.h"
 #include "freertos/event_groups.h"
 
+#if __has_include("wifi_config.local.h")
+#include "wifi_config.local.h"
+#else
+#include "wifi_config.example.h"
+#endif
 
-#define WIFI_SSID "SUMMER"
-#define WIFI_PASS "00000000"
 static const char *TAG = "WIFI";
 
 

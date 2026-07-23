@@ -21,7 +21,11 @@ extern "C" {
 #include "MAX471.h"
 #include "SHT20.h"
 #include "TSL2584.h"
+#include "dht11.h"
+#include "sensor_data.h"
 }
+
+#define DHT11_GPIO GPIO_NUM_38
 
 static const char *TAG = "CAM_APP";
 
@@ -64,15 +68,37 @@ static void max471_task(void *arg) {
     (void)arg;
     char buf[22];
     while (1) {
-        int voltage_mv = TEST_ADC_GetVoltage_mv();
+        float current_ma = 0.0f;
+        esp_err_t err = max471_read_current_ma(&current_ma);
 
-        snprintf(buf, sizeof(buf), "V:%dmV", voltage_mv);
+        if (err == ESP_OK) {
+            snprintf(buf, sizeof(buf), "I:%.1fmA", current_ma);
+            ESP_LOGI(TAG, "MAX471: %.1f mA", current_ma);
+        } else {
+            snprintf(buf, sizeof(buf), "I:----mA");
+            ESP_LOGW(TAG, "MAX471 read failed: %s", esp_err_to_name(err));
+        }
         oled_draw_string(0, 32, buf);
 
-        ESP_LOGI(TAG, "MAX471: %d mV", voltage_mv);
         vTaskDelay(pdMS_TO_TICKS(5200));
     }
 }
+static void dht11_task(void *arg) {
+    (void)arg;
+    float temp, humi;
+    while (1) {
+        esp_err_t err = dht11_read(DHT11_GPIO, &temp, &humi);
+        if (err == ESP_OK) {
+            sensor_data_update(temp, humi);
+            ESP_LOGI(TAG, "DHT11: %.1fC %.1f%%", temp, humi);
+        } else {
+            sensor_data_invalidate();
+            ESP_LOGW(TAG, "DHT11 read failed: %s", esp_err_to_name(err));
+        }
+        vTaskDelay(pdMS_TO_TICKS(3000));
+    }
+}
+
 static float randf(float lo, float hi) {
     return lo + (float)rand() / (float)RAND_MAX * (hi - lo);
 }
@@ -81,22 +107,33 @@ static void oled_display_task(void *arg) {
     (void)arg;
     char buf[22];
     while (1) {
-        float temp  = randf(15.0f, 45.0f);     // SHT20: 15~45°C
-        float hum   = randf(30.0f, 90.0f);     // SHT20: 30~90%
+        sensor_env_t env = sensor_data_get();
         float lux   = randf(1000.0f, 100000.0f);// TSL2584: 1k~100k lux
-        float curr  = randf(50.0f, 500.0f);     // MAX471: 50~500mA
-        float volt  = randf(3.00f, 3.50f);      // MAX471: 3.0~3.5V
+        float current_ma = 0.0f;
+        esp_err_t max471_err = max471_read_current_ma(&current_ma);
+        bool current_valid = max471_err == ESP_OK;
+        if (max471_err != ESP_OK) {
+            ESP_LOGW(TAG, "MAX471 read failed: %s", esp_err_to_name(max471_err));
+        }
 
         oled_clear();
         oled_draw_string(0, 0, "ESP32-S3 CAM");
 
-        snprintf(buf, sizeof(buf), "T:%.1fC H:%.0f%%", temp, hum);
+        if (env.valid) {
+            snprintf(buf, sizeof(buf), "T:%.1fC H:%.0f%%", env.temp, env.humi);
+        } else {
+            snprintf(buf, sizeof(buf), "T:--.-C H:--%%");
+        }
         oled_draw_string(0, 16, buf);
 
         snprintf(buf, sizeof(buf), "Lux:%.0f", lux);
         oled_draw_string(0, 32, buf);
 
-        snprintf(buf, sizeof(buf), "I:%.0fmA V:%.2fV", curr, volt);
+        if (current_valid) {
+            snprintf(buf, sizeof(buf), "I:%.1fmA", current_ma);
+        } else {
+            snprintf(buf, sizeof(buf), "I:----mA");
+        }
         oled_draw_string(0, 48, buf);
 
         oled_update();
@@ -124,6 +161,9 @@ extern "C" void app_main(void) {
 
     ESP_ERROR_CHECK(sensor_i2c_init());
     oled_init();
+    ESP_ERROR_CHECK(sensor_data_init());
+    ESP_ERROR_CHECK(dht11_init(DHT11_GPIO));
+    ESP_ERROR_CHECK(max471_init());
 
     //TEST_ADC_Init();
     //sth20_init();
@@ -132,6 +172,7 @@ extern "C" void app_main(void) {
     //xTaskCreatePinnedToCore(sht20_task, "sht20", 3072, NULL, 5, NULL, 0);
     //xTaskCreatePinnedToCore(tsl2584_task, "tsl2584", 3072, NULL, 5, NULL, 0);
     //xTaskCreatePinnedToCore(max471_task, "max471", 3072, NULL, 5, NULL, 0);
+    xTaskCreatePinnedToCore(dht11_task, "dht11", 3072, NULL, 5, NULL, 1);
     xTaskCreatePinnedToCore(oled_display_task, "oled", 3072, NULL, 4, NULL, 0);
 
     start_stream_server();

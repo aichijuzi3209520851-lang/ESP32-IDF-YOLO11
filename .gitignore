@@ -1,9 +1,23 @@
+# Local configuration and credentials
+main/wifi/wifi_config.local.h
+.env
+.env.*
+!.env.example
+
+# ESP-IDF and local build output
+build/
+build_*/
+.component_cache/
+.vscode/
+
+# Local services and generated runtime data
+emqx-*-windows-amd64/
+
 # Large files exceeding GitHub limit
 *.zip
 yolov11-cloud-upload*.tar.gz
 yolov11-cloud-upload*.part*
 train_cloud_*-results.tar.gz
-build_codex_*/
 
 # Python cache
 __pycache__/
@@ -15,6 +29,19 @@ yolov11/cloud-results-*/
 yolov11/model-backups/
 yolov11/runs/
 yolov11/*.info
+
+# Local datasets, reports, and conversation exports
+yolov11/train/
+yolov11/val/
+yolov11/valid/
+yolov11/test/
+yolov11/datasets/
+yolov11/device_test/
+ziliao/*-images/
+ziliao/*.docx
+ziliao/*.pdf
+ziliao/湖南信息学院本科毕业论文*
+对话记录.md
 
 # OS
 .DS_Store

@@ -25,7 +25,7 @@ esp_err_t camera_module_init() {
         .xclk_freq_hz = 24000000,
         .ledc_timer = LEDC_TIMER_0,
         .ledc_channel = LEDC_CHANNEL_0,
-        .pixel_format = PIXFORMAT_JPEG,
+        .pixel_format = PIXFORMAT_JPEG,//改成RGB888后，摄像头采集的图像是彩色的。
         .frame_size = FRAMESIZE_320X320,
         .jpeg_quality = 10,
         .fb_count = 3,

@@ -9,12 +9,16 @@
 #include <string.h>
 #include <sys/poll.h>
 #include <stdlib.h>
+#include <stdio.h>
+
+#include "sensor_data.h"
 
 static const char *TAG = "HTTP_STREAM";
 
 static esp_err_t root_handler(httpd_req_t *req);
 static esp_err_t stream_handler(httpd_req_t *req);
 static esp_err_t annotated_handler(httpd_req_t *req);
+static esp_err_t sensor_handler(httpd_req_t *req);
 
 // Double-buffer for zero-copy streaming: the stream handler
 // reads from one side while the main loop writes to the other.
@@ -87,6 +91,12 @@ esp_err_t start_stream_server(void) {
         .handler = root_handler, .user_ctx = NULL
     };
     httpd_register_uri_handler(server, &root_uri);
+
+    const httpd_uri_t sensor_uri = {
+        .uri = "/api/sensors", .method = HTTP_GET,
+        .handler = sensor_handler, .user_ctx = NULL
+    };
+    httpd_register_uri_handler(server, &sensor_uri);
 
     // --- Annotated image: port 8080 ---
     httpd_config_t annot_cfg = HTTPD_DEFAULT_CONFIG();
@@ -206,6 +216,25 @@ static esp_err_t annotated_handler(httpd_req_t *req) {
         return ESP_OK;
     }
     return httpd_resp_send(req, (const char *)s_annot_bufs[r], len);
+}
+
+// --- Sensor JSON API ---
+static esp_err_t sensor_handler(httpd_req_t *req) {
+    sensor_env_t env = sensor_data_get();
+    char json[96];
+    int len;
+    if (env.valid) {
+        len = snprintf(json, sizeof(json),
+            "{\"temp\":%.1f,\"humi\":%.1f,\"ok\":true}", env.temp, env.humi);
+    } else {
+        len = snprintf(json, sizeof(json),
+            "{\"temp\":null,\"humi\":null,\"ok\":false}");
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    return httpd_resp_send(req, json, len);
 }
 
 // --- Root HTML: embedded dashboard from binary ---

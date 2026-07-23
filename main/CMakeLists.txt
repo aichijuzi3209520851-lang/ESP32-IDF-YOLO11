@@ -25,12 +25,15 @@ idf_component_register(
          "max471/MAX471.c"
          "sht20/SHT20.c"
          "tsl2584/TSL2584.c"
+         "dht11/dht11.c"
+         "sensor_data/sensor_data.c"
     INCLUDE_DIRS "." "cam" "wifi" "http_stream" "blink"
                  "yolo_detect" "inference_task"
                  "oled" "led"
                  "max471" "sht20" "tsl2584"
+                 "dht11" "sensor_data"
                  "${cam_dir}/target/jpeg_include"
-    PRIV_REQUIRES esp_driver_gpio esp_adc esp_driver_i2c esp_http_server esp_netif nvs_flash esp_wifi ssd1306
+    PRIV_REQUIRES esp_driver_gpio esp_adc esp_driver_i2c esp_http_server esp_netif esp_timer nvs_flash esp_wifi ssd1306
 )
 
 target_add_aligned_binary_data(${COMPONENT_LIB} ${embed_files} BINARY)
