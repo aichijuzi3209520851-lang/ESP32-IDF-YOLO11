@@ -46,7 +46,8 @@ esp_err_t camera_module_init() {
         s->set_vflip(s, 0);
 
         s->set_aec2(s, 1);          // auto exposure
-        s->set_ae_level(s, 0);      // exposure compensation
+        s->set_ae_level(s, 1);      // modest positive exposure compensation
+        s->set_gain_ctrl(s, 1);     // automatic gain for dim scenes
 
         s->set_whitebal(s, 1);      // enable AWB
         s->set_awb_gain(s, 1);      // enable AWB gain

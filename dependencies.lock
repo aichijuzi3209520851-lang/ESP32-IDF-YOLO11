@@ -90,7 +90,7 @@ dependencies:
   idf:
     source:
       type: idf
-    version: 5.4.2
+    version: 5.3.4
 direct_dependencies:
 - espressif/esp-dl
 - espressif/esp32-camera

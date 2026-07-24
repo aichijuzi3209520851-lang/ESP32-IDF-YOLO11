@@ -232,10 +232,10 @@
             padding: 20px;
         }
 
-        /* 1. 顶部指标 KPI 栅格 (4列) */
+        /* 1. 顶部指标 KPI 栅格 */
         .kpi-grid {
             display: grid;
-            grid-template-columns: repeat(4, 1fr);
+            grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
             gap: 16px;
         }
 
@@ -767,6 +767,25 @@
                 </div>
             </div>
 
+            <!-- 光照传感器卡片 -->
+            <div class="kpi-card">
+                <div class="kpi-label">
+                    <span>光照强度 (光敏电阻)</span>
+                    <span class="partition-tag tag-real">真实传感器</span>
+                </div>
+                <div class="kpi-value-wrap">
+                    <span class="kpi-value" id="kpiLightPct">--</span>
+                    <span class="kpi-unit">%</span>
+                    <span style="margin: 0 4px; color: var(--border-color);">|</span>
+                    <span class="kpi-value" id="kpiLightVolt">--</span>
+                    <span class="kpi-unit">V</span>
+                </div>
+                <div class="kpi-footer">
+                    <span>GPIO 2 (ADC1_CH1)</span>
+                    <span id="lightSensorState">相对光照</span>
+                </div>
+            </div>
+
             <!-- 执行器状态卡片 -->
             <div class="kpi-card">
                 <div class="kpi-label">
@@ -813,11 +832,11 @@
                         </svg>
                         <span>实时摄像头采集画面 (OV5640)</span>
                     </div>
-                    <div class="panel-subtitle" id="rawResInfo">HTTP /stream (320x320)</div>
+                    <div class="panel-subtitle" id="rawResInfo">HTTP :81/stream (320x320)</div>
                 </div>
                 <div class="panel-body">
-                    <div class="video-wrapper" onclick="openLightbox('/stream', '实时摄像头采集画面')">
-                        <img id="rawStreamImg" src="/stream" alt="Camera Stream" />
+                    <div class="video-wrapper" onclick="openLightbox(dom.rawStreamImg.src, '实时摄像头采集画面')">
+                        <img id="rawStreamImg" src="" alt="Camera Stream" />
                         <div class="video-hint">
                             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
                             点击放大全屏查看
@@ -841,7 +860,7 @@
                         </svg>
                         <span>AI 推理与目标标注结果</span>
                     </div>
-                    <div class="panel-subtitle" id="inferModelInfo">YOLO11 INT8 (ESP32 端侧)</div>
+                    <div class="panel-subtitle" id="inferModelInfo">YOLO11 INT8 (ESP32 端侧 2类)</div>
                 </div>
                 <div class="panel-body">
                     <div class="video-wrapper" onclick="openLightbox(dom.annotImg.src, 'AI 推理与目标标注结果')">
@@ -853,7 +872,7 @@
                     </div>
                     <div class="stream-meta">
                         <span>推理延迟: <strong id="valInferLatency" style="color:var(--brand-primary)">-- ms</strong></span>
-                        <span>绘制帧率: <span id="valInferFPS">-- FPS</span></span>
+                        <span>推理帧率: <span id="valInferFPS">-- FPS</span></span>
                     </div>
                 </div>
             </div>
@@ -892,11 +911,24 @@
                             <div class="telemetry-title">MAX471 采样电压</div>
                             <div class="telemetry-num" id="subVoltage">0.00 V</div>
                         </div>
+                        <div class="telemetry-item">
+                            <div class="telemetry-title">光照强度（百分比）</div>
+                            <div class="telemetry-num" id="subLightPct">-- %</div>
+                        </div>
+                        <div class="telemetry-item">
+                            <div class="telemetry-title">光照传感器电压</div>
+                            <div class="telemetry-num" id="subLightVolt">-- V</div>
+                        </div>
                     </div>
 
                     <!-- 真实温湿度历史折线图 -->
                     <div style="height: 160px; position: relative;">
                         <canvas id="chartRealEnv"></canvas>
+                    </div>
+
+                    <!-- 光照强度历史折线图 -->
+                    <div style="height: 140px; position: relative; margin-top: 16px;">
+                        <canvas id="chartLight"></canvas>
                     </div>
                 </div>
             </div>
@@ -1052,8 +1084,11 @@
         // ========== 全局状态系统 ==========
         const state = {
             inferenceMode: 'esp32', // 'esp32' (2类) 或 'pc' (5类)
+            inferenceApiUrl: '/api/inference', // 当前推理 API 地址
+            pcServerUrl: '', // PC 推理服务地址
             simulatedWeather: 'clear', // 'clear', 'cloudy', 'rain', 'snow'
-            sensorData: { temp: null, humi: null, ok: false, current_ma: 0, voltage_v: 0 },
+            sensorData: { temp: null, humi: null, ok: false, current_ma: 0, voltage_v: 0,
+                          light_raw: 0, light_voltage: 0, light_pct: 0 },
             stainDetected: false,
             damageDetected: false,
             damageLocked: false,
@@ -1071,6 +1106,10 @@
             subHumi: document.getElementById('subHumi'),
             subCurrent: document.getElementById('subCurrent'),
             subVoltage: document.getElementById('subVoltage'),
+            kpiLightPct: document.getElementById('kpiLightPct'),
+            kpiLightVolt: document.getElementById('kpiLightVolt'),
+            subLightPct: document.getElementById('subLightPct'),
+            subLightVolt: document.getElementById('subLightVolt'),
             led1Status: document.getElementById('led1Status'),
             led2Status: document.getElementById('led2Status'),
             kpiDecision: document.getElementById('kpiDecision'),
@@ -1098,6 +1137,7 @@
         let chartLabels = Array.from({ length: 15 }, (_, i) => '');
         let chartTempData = Array(15).fill(null);
         let chartHumiData = Array(15).fill(null);
+        let chartLightData = Array(15).fill(null);
 
         const ctxEnv = document.getElementById('chartRealEnv').getContext('2d');
         const chartRealEnv = new Chart(ctxEnv, {
@@ -1136,6 +1176,36 @@
             }
         });
 
+        const ctxLight = document.getElementById('chartLight').getContext('2d');
+        const chartLight = new Chart(ctxLight, {
+            type: 'line',
+            data: {
+                labels: chartLabels,
+                datasets: [
+                    {
+                        label: '光照 (%)',
+                        borderColor: '#D97706',
+                        borderWidth: 2,
+                        data: chartLightData,
+                        tension: 0.2,
+                        pointRadius: 0,
+                        fill: true,
+                        backgroundColor: 'rgba(217, 119, 6, 0.08)'
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { position: 'top', labels: { boxWidth: 12, font: { size: 11 } } } },
+                scales: {
+                    x: { display: false },
+                    y: { min: 0, max: 100, ticks: { font: { size: 10 }, callback: v => v + '%' }, grid: { color: '#E2E8F0' } }
+                },
+                animation: false
+            }
+        });
+
         // ========== 数据拉取逻辑 ==========
         function fetchSensors() {
             fetch('/api/sensors', { cache: 'no-store' })
@@ -1145,8 +1215,41 @@
                     updateSensorUI();
                 })
                 .catch(() => {
-                    state.sensorData = { temp: null, humi: null, ok: false, current_ma: 0, voltage_v: 0 };
+                    state.sensorData = { temp: null, humi: null, ok: false, current_ma: 0, voltage_v: 0,
+                                         light_raw: 0, light_voltage: 0, light_pct: 0 };
                     updateSensorUI();
+                });
+        }
+
+        function fetchInferenceStatus() {
+            fetch(state.inferenceApiUrl, { cache: 'no-store' })
+                .then(r => r.json())
+                .then(data => {
+                    if (!data.ready) {
+                        dom.valInferLatency.textContent = '-- ms';
+                        dom.valInferFPS.textContent = '-- FPS';
+                        return;
+                    }
+
+                    dom.valInferLatency.textContent = `${data.latency_ms} ms`;
+                    dom.valInferFPS.textContent = `${Number(data.fps).toFixed(2)} FPS`;
+
+                    // 兼容 ESP32 (stain/damage) 和 PC (5类) 两种返回格式
+                    if (state.inferenceMode === 'pc') {
+                        // PC 模式：5 类，检测到任何类别都算 stain/damage 对应
+                        const dets = data.detections || [];
+                        state.stainDetected = dets.some(d => d.class === 0 || d.class === 1 || d.class === 4); // bird_drop/dust/snow → 污渍类
+                        state.damageDetected = dets.some(d => d.class === 2 || d.class === 3); // electrical/physical damage → 损伤类
+                    } else {
+                        // ESP32 模式：直接用 stain/damage 字段
+                        state.stainDetected = data.stain === true;
+                        state.damageDetected = data.damage === true;
+                    }
+                    evaluateRules();
+                })
+                .catch(() => {
+                    dom.valInferLatency.textContent = '-- ms';
+                    dom.valInferFPS.textContent = '-- FPS';
                 });
         }
 
@@ -1169,6 +1272,14 @@
             dom.subCurrent.textContent = `${currStr} mA`;
             dom.subVoltage.textContent = `${voltStr} V`;
 
+            // 光照传感器
+            const lpct = (d && Number.isFinite(d.light_pct)) ? d.light_pct : null;
+            const lvolt = (d && Number.isFinite(d.light_voltage)) ? d.light_voltage : null;
+            dom.kpiLightPct.textContent = lpct !== null ? lpct.toFixed(1) : '--';
+            dom.kpiLightVolt.textContent = lvolt !== null ? lvolt.toFixed(3) : '--';
+            dom.subLightPct.textContent = lpct !== null ? `${lpct.toFixed(1)} %` : '-- %';
+            dom.subLightVolt.textContent = lvolt !== null ? `${lvolt.toFixed(3)} V` : '-- V';
+
             // 更新折线图
             const nowTime = new Date().toLocaleTimeString('zh-CN', { hour12: false });
             chartLabels.push(nowTime);
@@ -1177,7 +1288,10 @@
             chartTempData.shift();
             chartHumiData.push(valid ? d.humi : null);
             chartHumiData.shift();
+            chartLightData.push(lpct);
+            chartLightData.shift();
             chartRealEnv.update('none');
+            chartLight.update('none');
 
             dom.valLastTime.textContent = nowTime;
         }
@@ -1268,18 +1382,31 @@
         // ========== 模式与天气交互 ==========
         function setInferenceMode(m) {
             state.inferenceMode = m;
+            const host = window.location.hostname || '127.0.0.1';
+
             if (m === 'esp32') {
                 dom.modeBtnESP32.classList.add('active');
                 dom.modeBtnPC.classList.remove('active');
                 dom.inferModelInfo.textContent = 'YOLO11 INT8 (ESP32 端侧 2类)';
-                dom.valInferLatency.textContent = '420 ms';
-                dom.valInferFPS.textContent = '2.4 FPS';
+                // 切换到 ESP32 的标注流（8080端口）
+                dom.annotImg.src = `http://${host}:8080/annotated-stream`;
+                // 使用 ESP32 本地 API
+                state.inferenceApiUrl = '/api/inference';
             } else {
                 dom.modeBtnPC.classList.add('active');
                 dom.modeBtnESP32.classList.remove('active');
                 dom.inferModelInfo.textContent = 'YOLO11 FP32 (PC 边缘 5类)';
-                dom.valInferLatency.textContent = '35 ms';
-                dom.valInferFPS.textContent = '15.0 FPS';
+                // 切换到 PC 推理服务的标注流（5000端口）
+                const pcHost = prompt('请输入 PC 推理服务地址', `http://${host}:5000`);
+                if (pcHost) {
+                    state.pcServerUrl = pcHost.replace(/\/$/, '');
+                    dom.annotImg.src = `${state.pcServerUrl}/annotated-stream`;
+                    state.inferenceApiUrl = `${state.pcServerUrl}/api/inference`;
+                } else {
+                    // 用户取消了，切回 ESP32 模式
+                    setInferenceMode('esp32');
+                    return;
+                }
             }
             evaluateRules();
         }
@@ -1365,17 +1492,16 @@
             const host = window.location.hostname || '127.0.0.1';
             dom.valHostIP.textContent = host;
 
-            // 定时拉取标注图像与真实传感器
-            const annotUrl = `http://${host}:8080/annotated`;
-            dom.annotImg.src = annotUrl;
+            dom.rawStreamImg.src = `http://${host}:81/stream`;
 
-            setInterval(() => {
-                const tsUrl = `${annotUrl}?t=${Date.now()}`;
-                dom.annotImg.src = tsUrl;
-            }, 2000);
+            // 推理任务完成一帧后，标注流立即推送该帧。
+            dom.annotImg.src = `http://${host}:8080/annotated-stream`;
 
             fetchSensors();
             setInterval(fetchSensors, 3000);
+
+            fetchInferenceStatus();
+            setInterval(fetchInferenceStatus, 1000);
 
             // 规则评估轮询
             setInterval(evaluateRules, 1000);

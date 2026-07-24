@@ -1,6 +1,5 @@
 #include <stdio.h>
 #include <cstring>
-#include <cstdlib>
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "nvs_flash.h"
@@ -19,6 +18,7 @@
 
 extern "C" {
 #include "MAX471.h"
+#include "LightSensor.h"
 #include "SHT20.h"
 #include "TSL2584.h"
 #include "dht11.h"
@@ -99,21 +99,24 @@ static void dht11_task(void *arg) {
     }
 }
 
-static float randf(float lo, float hi) {
-    return lo + (float)rand() / (float)RAND_MAX * (hi - lo);
-}
-
 static void oled_display_task(void *arg) {
     (void)arg;
     char buf[22];
     while (1) {
         sensor_env_t env = sensor_data_get();
-        float lux   = randf(1000.0f, 100000.0f);// TSL2584: 1k~100k lux
+        light_sensor_data_t light = {};
+        esp_err_t light_err = light_sensor_read(&light);
         float current_ma = 0.0f;
         esp_err_t max471_err = max471_read_current_ma(&current_ma);
         bool current_valid = max471_err == ESP_OK;
         if (max471_err != ESP_OK) {
             ESP_LOGW(TAG, "MAX471 read failed: %s", esp_err_to_name(max471_err));
+        }
+        if (light_err == ESP_OK) {
+            ESP_LOGI(TAG, "Light: raw=%d, %d mV, %.1f%%",
+                     light.raw, light.voltage_mv, light.intensity_percent);
+        } else {
+            ESP_LOGW(TAG, "Light sensor read failed: %s", esp_err_to_name(light_err));
         }
 
         oled_clear();
@@ -126,7 +129,11 @@ static void oled_display_task(void *arg) {
         }
         oled_draw_string(0, 16, buf);
 
-        snprintf(buf, sizeof(buf), "Lux:%.0f", lux);
+        if (light_err == ESP_OK) {
+            snprintf(buf, sizeof(buf), "Light:%.0f%%", light.intensity_percent);
+        } else {
+            snprintf(buf, sizeof(buf), "Light:---%%");
+        }
         oled_draw_string(0, 32, buf);
 
         if (current_valid) {
@@ -140,6 +147,22 @@ static void oled_display_task(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(2000));
     }
 }
+static void capture_task(void *arg) {
+    (void)arg;
+    while (1) {
+        camera_fb_t *fb = camera_module_capture();
+        if (fb) {
+            stream_update_frame(fb->buf, fb->len);
+            inference_task_send_frame(fb->buf, fb->len, fb->width, fb->height);
+            camera_module_return(fb);
+        } else {
+            ESP_LOGW(TAG, "Capture failed");
+        }
+        // 短暂让出 CPU，保证同核的 HTTP 服务器有时间片发送 MJPEG 流
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
 extern "C" void app_main(void) {
 
     ESP_LOGI(TAG, "App starting on core %d", xPortGetCoreID());
@@ -164,6 +187,7 @@ extern "C" void app_main(void) {
     ESP_ERROR_CHECK(sensor_data_init());
     ESP_ERROR_CHECK(dht11_init(DHT11_GPIO));
     ESP_ERROR_CHECK(max471_init());
+    ESP_ERROR_CHECK(light_sensor_init());
 
     //TEST_ADC_Init();
     //sth20_init();
@@ -178,21 +202,11 @@ extern "C" void app_main(void) {
     start_stream_server();
     inference_task_start();
 
+    // 采集任务放到 Core 0，优先级高于 HTTP 服务器，但通过 vTaskDelay 让出时间片
+    xTaskCreatePinnedToCore(capture_task, "capture", 4096, NULL, 6, NULL, 0);
+
+    // app_main 不返回 — 主任务保持存活，优先级最低，不影响其他任务
     while (1) {
-        camera_fb_t *fb = camera_module_capture();
-        if (fb) {
-            uint8_t *jpg_copy = (uint8_t *)malloc(fb->len);
-            if (jpg_copy) {
-                memcpy(jpg_copy, fb->buf, fb->len);
-                stream_update_frame(jpg_copy, fb->len);
-                free(jpg_copy);
-            }
-
-            inference_task_send_frame(fb->buf, fb->len, fb->width, fb->height);
-
-            camera_module_return(fb);
-        } else {
-            ESP_LOGW(TAG, "Capture failed");
-        }
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

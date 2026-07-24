@@ -4,12 +4,14 @@
 #include "led.h"
 #include "img_converters.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "esp_task_wdt.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/semphr.h"
 #include <cstring>
 #include <cstdlib>
+#include <cstdio>
 
 static const char *TAG = "INFERENCE";
 
@@ -17,7 +19,10 @@ static YOLODetector *s_detector = NULL;
 static inference_frame_t s_latest_frame = {};
 static SemaphoreHandle_t s_frame_mtx = NULL;
 static SemaphoreHandle_t s_frame_sem = NULL;
+static SemaphoreHandle_t s_status_mtx = NULL;
 static volatile bool s_inference_ready = true;
+static inference_status_t s_status = {};
+static int64_t s_last_completed_us = 0;
 
 static void inference_task_run(void *arg) {
     ESP_LOGI(TAG, "Inference task started on core %d", xPortGetCoreID());
@@ -70,13 +75,15 @@ static void inference_task_run(void *arg) {
             continue;
         }
 
+        int64_t inference_start_us = esp_timer_get_time();
         auto results = s_detector->detect(
             rgb888_buf, frame.width, frame.height
         );
+        int64_t inference_end_us = esp_timer_get_time();
 
         if (!results.empty()) {
-            int highest_priority_class = YOLO_CLASS_CLEAN;
-            int highest_priority = yolo_class_alert_priority(highest_priority_class);
+            int highest_priority_class = -1;
+            int highest_priority = -1;
             float weighted_dirty_area = 0.0f;
             bool has_fault = false;
             bool wet_cleaning_blocked = false;
@@ -142,6 +149,35 @@ static void inference_task_run(void *arg) {
             free(annotated_jpeg);
         }
 
+        inference_status_t next = {};
+        next.ready = true;
+        next.latency_ms = (uint32_t)((inference_end_us - inference_start_us) / 1000);
+        next.fps = s_last_completed_us > 0
+                       ? 1000000.0f / (float)(inference_end_us - s_last_completed_us)
+                       : 0.0f;
+        next.detections = (uint16_t)results.size();
+        next.top_class_id = -1;
+
+        for (const auto &result : results) {
+            next.stain_detected = next.stain_detected || result.class_id == YOLO_CLASS_STAIN;
+            next.damage_detected = next.damage_detected || yolo_class_is_fault(result.class_id);
+            if (result.score > next.top_score) {
+                next.top_score = result.score;
+                next.top_class_id = result.class_id;
+            }
+        }
+        if (next.top_class_id >= 0) {
+            snprintf(next.top_class, sizeof(next.top_class), "%s",
+                     s_detector->class_name(next.top_class_id));
+        }
+
+        if (s_status_mtx && xSemaphoreTake(s_status_mtx, pdMS_TO_TICKS(20)) == pdTRUE) {
+            next.sequence = s_status.sequence + 1;
+            s_status = next;
+            xSemaphoreGive(s_status_mtx);
+        }
+        s_last_completed_us = inference_end_us;
+
         heap_caps_free(rgb888_buf);
         free(frame.jpeg_data);
         esp_task_wdt_reset();
@@ -151,7 +187,8 @@ static void inference_task_run(void *arg) {
 void inference_task_start(void) {
     s_frame_mtx = xSemaphoreCreateMutex();
     s_frame_sem = xSemaphoreCreateBinary();
-    if (!s_frame_mtx || !s_frame_sem) {
+    s_status_mtx = xSemaphoreCreateMutex();
+    if (!s_frame_mtx || !s_frame_sem || !s_status_mtx) {
         ESP_LOGE(TAG, "Failed to create frame sync primitives");
         return;
     }
@@ -190,5 +227,13 @@ bool inference_task_send_frame(const uint8_t *jpeg_data, size_t jpeg_len, int wi
     if (old_buf) free(old_buf);
 
     xSemaphoreGive(s_frame_sem);
+    return true;
+}
+
+bool inference_status_get(inference_status_t *status) {
+    if (!status || !s_status_mtx) return false;
+    if (xSemaphoreTake(s_status_mtx, pdMS_TO_TICKS(20)) != pdTRUE) return false;
+    *status = s_status;
+    xSemaphoreGive(s_status_mtx);
     return true;
 }

@@ -15,9 +15,8 @@ emqx-*-windows-amd64/
 
 # Large files exceeding GitHub limit
 *.zip
-yolov11-cloud-upload*.tar.gz
+*.tar.gz
 yolov11-cloud-upload*.part*
-train_cloud_*-results.tar.gz
 
 # Python cache
 __pycache__/
@@ -41,6 +40,8 @@ ziliao/*-images/
 ziliao/*.docx
 ziliao/*.pdf
 ziliao/湖南信息学院本科毕业论文*
+ziliao/esp32_results/
+ziliao/pc_results/
 对话记录.md
 
 # OS

@@ -39,16 +39,12 @@ void led_set_from_detection(int class_id)
     bool red_on = false;
 
     switch (class_id) {
-        case YOLO_CLASS_BIRD_DROP:
-        case YOLO_CLASS_DUST:
+        case YOLO_CLASS_STAIN:
             green_on = true;
             break;
-        case YOLO_CLASS_ELECTRICAL_DAMAGE:
-        case YOLO_CLASS_PHYSICAL_DAMAGE:
-        case YOLO_CLASS_SNOW_COVERED:
+        case YOLO_CLASS_DAMAGE:
             red_on = true;
             break;
-        case YOLO_CLASS_CLEAN:
         default:
             break;
     }

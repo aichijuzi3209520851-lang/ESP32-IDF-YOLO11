@@ -12,13 +12,17 @@
 #include <stdio.h>
 
 #include "sensor_data.h"
+#include "LightSensor.h"
+#include "inference_task.hpp"
 
 static const char *TAG = "HTTP_STREAM";
 
 static esp_err_t root_handler(httpd_req_t *req);
 static esp_err_t stream_handler(httpd_req_t *req);
 static esp_err_t annotated_handler(httpd_req_t *req);
+static esp_err_t annotated_stream_handler(httpd_req_t *req);
 static esp_err_t sensor_handler(httpd_req_t *req);
+static esp_err_t inference_handler(httpd_req_t *req);
 
 // Double-buffer for zero-copy streaming: the stream handler
 // reads from one side while the main loop writes to the other.
@@ -39,6 +43,7 @@ static volatile int s_write_idx = 0;            // index being written to
 static uint8_t *s_annot_bufs[2] = {NULL, NULL};
 static volatile size_t s_annot_lens[2] = {0, 0};
 static volatile int s_annot_write_idx = 0;
+static volatile int s_annot_serial = 0;
 static SemaphoreHandle_t s_annot_sem = NULL;
 
 static char s_ip_str[16] = "0.0.0.0";
@@ -68,15 +73,48 @@ esp_err_t start_stream_server(void) {
         snprintf(s_ip_str, sizeof(s_ip_str), IPSTR, IP2STR(&ip_info.ip));
     }
 
-    // --- Main stream: port 80, MJPEG ---
-    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
-    config.server_port = 80;
-    config.stack_size = 6144;
-    config.max_uri_handlers = 8;
+    // --- Dashboard and JSON APIs: port 80 ---
+    httpd_config_t web_cfg = HTTPD_DEFAULT_CONFIG();
+    web_cfg.server_port = 80;
+    web_cfg.stack_size = 6144;
+    web_cfg.max_uri_handlers = 8;
+    web_cfg.max_open_sockets = 4;
 
-    httpd_handle_t server = NULL;
-    if (httpd_start(&server, &config) != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to start HTTP server");
+    httpd_handle_t web_srv = NULL;
+    if (httpd_start(&web_srv, &web_cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start dashboard server");
+        return ESP_FAIL;
+    }
+
+    const httpd_uri_t root_uri = {
+        .uri = "/", .method = HTTP_GET,
+        .handler = root_handler, .user_ctx = NULL
+    };
+    httpd_register_uri_handler(web_srv, &root_uri);
+
+    const httpd_uri_t sensor_uri = {
+        .uri = "/api/sensors", .method = HTTP_GET,
+        .handler = sensor_handler, .user_ctx = NULL
+    };
+    httpd_register_uri_handler(web_srv, &sensor_uri);
+
+    const httpd_uri_t inference_uri = {
+        .uri = "/api/inference", .method = HTTP_GET,
+        .handler = inference_handler, .user_ctx = NULL
+    };
+    httpd_register_uri_handler(web_srv, &inference_uri);
+
+    // --- Raw camera MJPEG: port 81 ---
+    httpd_config_t stream_cfg = HTTPD_DEFAULT_CONFIG();
+    stream_cfg.server_port = 81;
+    stream_cfg.ctrl_port = 32769;
+    stream_cfg.stack_size = 6144;
+    stream_cfg.max_uri_handlers = 2;
+    stream_cfg.max_open_sockets = 1;
+
+    httpd_handle_t stream_srv = NULL;
+    if (httpd_start(&stream_srv, &stream_cfg) != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to start raw stream server on port 81");
         return ESP_FAIL;
     }
 
@@ -84,26 +122,15 @@ esp_err_t start_stream_server(void) {
         .uri = "/stream", .method = HTTP_GET,
         .handler = stream_handler, .user_ctx = NULL
     };
-    httpd_register_uri_handler(server, &stream_uri);
-
-    const httpd_uri_t root_uri = {
-        .uri = "/", .method = HTTP_GET,
-        .handler = root_handler, .user_ctx = NULL
-    };
-    httpd_register_uri_handler(server, &root_uri);
-
-    const httpd_uri_t sensor_uri = {
-        .uri = "/api/sensors", .method = HTTP_GET,
-        .handler = sensor_handler, .user_ctx = NULL
-    };
-    httpd_register_uri_handler(server, &sensor_uri);
+    httpd_register_uri_handler(stream_srv, &stream_uri);
 
     // --- Annotated image: port 8080 ---
     httpd_config_t annot_cfg = HTTPD_DEFAULT_CONFIG();
     annot_cfg.server_port    = 8080;
-    annot_cfg.ctrl_port      = 0;
+    annot_cfg.ctrl_port      = 32771;
     annot_cfg.stack_size     = 4096;
     annot_cfg.max_uri_handlers = 4;
+    annot_cfg.max_open_sockets = 1;
 
     httpd_handle_t annot_srv = NULL;
     if (httpd_start(&annot_srv, &annot_cfg) != ESP_OK) {
@@ -117,8 +144,16 @@ esp_err_t start_stream_server(void) {
     };
     httpd_register_uri_handler(annot_srv, &annot_uri);
 
-    ESP_LOGI(TAG, "Stream:  http://" IPSTR "/stream",  IP2STR(&ip_info.ip));
+    const httpd_uri_t annot_stream_uri = {
+        .uri = "/annotated-stream", .method = HTTP_GET,
+        .handler = annotated_stream_handler, .user_ctx = NULL
+    };
+    httpd_register_uri_handler(annot_srv, &annot_stream_uri);
+
+    ESP_LOGI(TAG, "Dashboard: http://" IPSTR "/", IP2STR(&ip_info.ip));
+    ESP_LOGI(TAG, "Stream:  http://" IPSTR ":81/stream", IP2STR(&ip_info.ip));
     ESP_LOGI(TAG, "Annot:   http://" IPSTR ":8080/annotated", IP2STR(&ip_info.ip));
+    ESP_LOGI(TAG, "Annot stream: http://" IPSTR ":8080/annotated-stream", IP2STR(&ip_info.ip));
     return ESP_OK;
 }
 
@@ -152,6 +187,7 @@ void stream_update_annotated(const uint8_t *jpeg_data, size_t jpeg_len) {
     memcpy(s_annot_bufs[w], jpeg_data, jpeg_len);
     s_annot_lens[w] = jpeg_len;
     s_annot_write_idx ^= 1;
+    s_annot_serial++;
     xSemaphoreGive(s_annot_sem);
 }
 
@@ -218,22 +254,103 @@ static esp_err_t annotated_handler(httpd_req_t *req) {
     return httpd_resp_send(req, (const char *)s_annot_bufs[r], len);
 }
 
+static esp_err_t annotated_stream_handler(httpd_req_t *req) {
+    char part_buf[128];
+    int last_serial = -1;
+
+    httpd_resp_set_type(req, "multipart/x-mixed-replace; boundary=frame");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache,no-store");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_hdr(req, "Connection", "keep-alive");
+
+    while (client_is_connected(req)) {
+        int serial = s_annot_serial;
+        int r = s_annot_write_idx ^ 1;
+        size_t len = s_annot_lens[r];
+        if (len == 0 || serial == last_serial) {
+            if (xSemaphoreTake(s_annot_sem, pdMS_TO_TICKS(1000)) != pdTRUE) {
+                continue;
+            }
+            serial = s_annot_serial;
+            r = s_annot_write_idx ^ 1;
+            len = s_annot_lens[r];
+        }
+        if (len == 0 || serial == last_serial) continue;
+        last_serial = serial;
+
+        int hlen = snprintf(part_buf, sizeof(part_buf),
+            "--frame\r\nContent-Type: image/jpeg\r\nContent-Length: %u\r\n\r\n",
+            (unsigned)len);
+        if (httpd_resp_send_chunk(req, part_buf, hlen) != ESP_OK) break;
+        if (httpd_resp_send_chunk(req, (const char *)s_annot_bufs[r], len) != ESP_OK) break;
+        if (httpd_resp_send_chunk(req, "\r\n", 2) != ESP_OK) break;
+    }
+
+    ESP_LOGI(TAG, "Annotated stream client disconnected");
+    return ESP_OK;
+}
+
 // --- Sensor JSON API ---
 static esp_err_t sensor_handler(httpd_req_t *req) {
     sensor_env_t env = sensor_data_get();
-    char json[96];
+
+    int raw = 0;
+    float volt = 0.0f;
+    float pct = 0.0f;
+    light_sensor_data_t ls = {0};
+    if (light_sensor_read(&ls) == ESP_OK) {
+        raw  = ls.raw;
+        volt = ls.voltage_mv / 1000.0f;
+        pct  = ls.intensity_percent;
+    }
+
+    char json[192];
     int len;
     if (env.valid) {
         len = snprintf(json, sizeof(json),
-            "{\"temp\":%.1f,\"humi\":%.1f,\"ok\":true}", env.temp, env.humi);
+            "{\"temp\":%.1f,\"humi\":%.1f,\"ok\":true,"
+            "\"light_raw\":%d,\"light_voltage\":%.3f,\"light_pct\":%.1f}",
+            env.temp, env.humi, raw, volt, pct);
     } else {
         len = snprintf(json, sizeof(json),
-            "{\"temp\":null,\"humi\":null,\"ok\":false}");
+            "{\"temp\":null,\"humi\":null,\"ok\":false,"
+            "\"light_raw\":%d,\"light_voltage\":%.3f,\"light_pct\":%.1f}",
+            raw, volt, pct);
     }
 
     httpd_resp_set_type(req, "application/json");
     httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(req, "Connection", "close");
+    return httpd_resp_send(req, json, len);
+}
+
+static esp_err_t inference_handler(httpd_req_t *req) {
+    inference_status_t status = {0};
+    char json[256];
+    int len;
+
+    if (inference_status_get(&status) && status.ready) {
+        len = snprintf(json, sizeof(json),
+            "{\"ready\":true,\"sequence\":%u,\"latency_ms\":%u,\"fps\":%.2f,"
+            "\"detections\":%u,\"stain\":%s,\"damage\":%s,"
+            "\"top_class\":\"%s\",\"top_score\":%.4f}",
+            (unsigned)status.sequence,
+            (unsigned)status.latency_ms,
+            status.fps,
+            (unsigned)status.detections,
+            status.stain_detected ? "true" : "false",
+            status.damage_detected ? "true" : "false",
+            status.top_class,
+            status.top_score);
+    } else {
+        len = snprintf(json, sizeof(json), "{\"ready\":false}");
+    }
+
+    httpd_resp_set_type(req, "application/json");
+    httpd_resp_set_hdr(req, "Access-Control-Allow-Origin", "*");
+    httpd_resp_set_hdr(req, "Cache-Control", "no-cache,no-store");
+    httpd_resp_set_hdr(req, "Connection", "close");
     return httpd_resp_send(req, json, len);
 }
 
@@ -244,6 +361,7 @@ extern const uint8_t dashboard_html_end[]   asm("_binary_dashboard_html_end");
 static esp_err_t root_handler(httpd_req_t *req) {
     httpd_resp_set_type(req, "text/html; charset=utf-8");
     httpd_resp_set_hdr(req, "Cache-Control", "no-cache");
+    httpd_resp_set_hdr(req, "Connection", "close");
     size_t len = dashboard_html_end - dashboard_html_start;
     httpd_resp_send(req, (const char *)dashboard_html_start, len);
     return ESP_OK;

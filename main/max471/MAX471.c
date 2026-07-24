@@ -1,8 +1,8 @@
 #include "MAX471.h"
 
+#include "adc1_shared.h"
 #include "esp_adc/adc_cali.h"
 #include "esp_adc/adc_cali_scheme.h"
-#include "esp_adc/adc_oneshot.h"
 #include "esp_log.h"
 #include <stdbool.h>
 
@@ -14,7 +14,6 @@
 #define MAX471_OUT_MV_PER_AMP       1000.0f /* 常见 MAX471 模块：1 V/A */
 
 static const char *TAG = "MAX471";
-static adc_oneshot_unit_handle_t s_adc_handle;
 static adc_cali_handle_t s_cali_handle;
 static bool s_initialized;
 static bool s_calibrated;
@@ -22,20 +21,10 @@ static bool s_calibrated;
 esp_err_t max471_init(void) {
     if (s_initialized) return ESP_OK;
 
-    const adc_oneshot_unit_init_cfg_t unit_cfg = {
-        .unit_id = MAX471_ADC_UNIT,
-        .clk_src = ADC_RTC_CLK_SRC_DEFAULT,
-        .ulp_mode = ADC_ULP_MODE_DISABLE,
-    };
-    const adc_oneshot_chan_cfg_t chan_cfg = {
-        .atten = MAX471_ADC_ATTEN,
-        .bitwidth = MAX471_ADC_WIDTH,
-    };
-
-    esp_err_t err = adc_oneshot_new_unit(&unit_cfg, &s_adc_handle);
-    if (err != ESP_OK) return err;
-
-    err = adc_oneshot_config_channel(s_adc_handle, MAX471_ADC_CHANNEL, &chan_cfg);
+    esp_err_t err = adc1_shared_config_channel(
+        MAX471_ADC_CHANNEL,
+        MAX471_ADC_ATTEN,
+        MAX471_ADC_WIDTH);
     if (err != ESP_OK) return err;
 
     adc_cali_scheme_ver_t scheme;
@@ -70,7 +59,7 @@ esp_err_t max471_read_voltage_mv(int *voltage_mv) {
     int64_t raw_sum = 0;
     for (int i = 0; i < MAX471_SAMPLE_COUNT; ++i) {
         int raw = 0;
-        esp_err_t err = adc_oneshot_read(s_adc_handle, MAX471_ADC_CHANNEL, &raw);
+        esp_err_t err = adc1_shared_read(MAX471_ADC_CHANNEL, &raw);
         if (err != ESP_OK) return err;
         raw_sum += raw;
     }

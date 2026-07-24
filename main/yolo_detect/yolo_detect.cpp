@@ -13,8 +13,7 @@
 static const char *TAG = "YOLO_DET";
 
 static const char *CLASS_NAMES[YOLO_NUM_CLASSES] = {
-    "bird_drop", "clean", "dust", "electrical_damage",
-    "physical_damage", "snow_covered"
+    "stain", "damage"
 };
 
 extern const uint8_t model_espdl_start[] asm("_binary_yolo11n_esp32s3_espdl_start");
@@ -400,12 +399,8 @@ const char* YOLODetector::class_name(int class_id) const {
 }
 
 static const uint32_t CLASS_COLORS[YOLO_NUM_CLASSES] = {
-    0x00CC44, // bird_drop      - orange (high visibility)
-    0x22CC22, // clean          - green
-    0xCCCC00, // dust           - yellow
-    0xCC2200, // electrical     - red
-    0x8888FF, // physical       - blue
-    0x00CCCC, // snow_covered   - cyan
+    0xCCCC00, // stain  - yellow
+    0xCC2200, // damage - red
 };
 
 static inline int clamp_i(int v, int lo, int hi) {

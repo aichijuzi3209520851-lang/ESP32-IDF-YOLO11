@@ -30,7 +30,7 @@ esp_err_t sensor_i2c_init(void)
 {
     i2c_master_bus_config_t bus_cfg = {
         .i2c_port = I2C_NUM_0,
-        .sda_io_num = GPIO_NUM_2,
+        .sda_io_num = GPIO_NUM_21,
         .scl_io_num = GPIO_NUM_3,
         .clk_source = I2C_CLK_SRC_DEFAULT,
         .glitch_ignore_cnt = 7,
@@ -63,6 +63,6 @@ esp_err_t sensor_i2c_init(void)
     );
 
     // OLED is handled by chill-sam/ssd1306 component via ssd1306_new_i2c()
-    ESP_LOGI(TAG, "I2C bus (NUM_0) initialized: SHT20(0x40) TSL2584(0x39)");
+    ESP_LOGI(TAG, "I2C bus initialized: SDA=GPIO21 SCL=GPIO3, SHT20(0x40) TSL2584(0x39)");
     return ESP_OK;
 }
